@@ -5,8 +5,8 @@
 
 // Configuração
 const CONFIG = {
-    // Altere para a URL do seu worker quando deployar
-    API_BASE: 'https://dashboard-radio-worker.seu-usuario.workers.dev',
+    // URL do worker deployado
+    API_BASE: 'https://dashboard-radio-worker.kaike-458.workers.dev',
     POLLING_INTERVAL: 5000, // 5 segundos
     DASHBOARD_REFRESH_INTERVAL: 60000, // 1 minuto (dados completos)
 };

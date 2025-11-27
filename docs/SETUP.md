@@ -102,7 +102,7 @@ https://dashboard-radio-worker.seu-usuario.workers.dev
 - **Project name**: `dashboard-radio`
 - **Production branch**: `main`
 - **Build command**: (deixe vazio)
-- **Build output directory**: `frontend`
+- **Build output directory**: `.` (raiz do projeto)
 - **Root directory**: `/` (raiz do projeto)
 
 #### 3.3 Variáveis de Ambiente
@@ -122,7 +122,7 @@ https://dashboard-radio.pages.dev
 
 #### 4.1 Atualizar URL da API
 
-Edite `frontend/script.js` e atualize a URL do worker:
+Edite `script.js` (na raiz) e atualize a URL do worker:
 
 ```javascript
 const CONFIG = {
@@ -136,7 +136,7 @@ const CONFIG = {
 #### 4.2 Commit e Push
 
 ```bash
-git add frontend/script.js
+git add script.js
 git commit -m "Update: Configurar URL do worker"
 git push origin main
 ```
@@ -184,7 +184,7 @@ Vá em **Actions** no GitHub e acompanhe o deploy!
 
 ## 🗺️ Adicionar Mapa do Brasil (SVG)
 
-O arquivo `frontend/mapa-brasil.svg` está como placeholder.
+O arquivo `mapa-brasil.svg` (na raiz) está como placeholder.
 
 ### Opções para obter o SVG:
 
@@ -201,7 +201,7 @@ O arquivo `frontend/mapa-brasil.svg` está como placeholder.
 Substitua o conteúdo de `mapa-brasil.svg` pelo SVG real e faça commit:
 
 ```bash
-git add frontend/mapa-brasil.svg
+git add mapa-brasil.svg
 git commit -m "Update: Adicionar mapa do Brasil"
 git push origin main
 ```
@@ -273,7 +273,7 @@ routes = [
 
 ### Ajustar Intervalos de Atualização
 
-Edite `frontend/script.js`:
+Edite `script.js` (na raiz):
 
 ```javascript
 const CONFIG = {
@@ -351,7 +351,7 @@ firefox --kiosk https://dashboard-radio.pages.dev
 
 ### Auto-refresh (se browser travar)
 
-Adicione ao final de `frontend/script.js`:
+Adicione ao final de `script.js` (na raiz):
 
 ```javascript
 // Refresh completo a cada 1 hora (evita memory leak)
