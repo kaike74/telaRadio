@@ -186,24 +186,22 @@ function renderizarGraficoCidades(topCidades) {
 }
 
 function renderizarListaInsercoes(insercoes) {
-    const container = document.getElementById('lista-insercoes');
+    const container = document.getElementById('lista-insercoes-lateral');
 
     if (insercoes.length === 0) {
         container.innerHTML = '<div class="loading">Nenhuma inserção encontrada</div>';
         return;
     }
 
-    container.innerHTML = insercoes.slice(0, 50).map((insercao, index) => `
-        <div class="insercao-item ${index < 5 ? 'nova' : ''}">
+    // Mostrar apenas 10 inserções (cabe melhor no layout lateral)
+    container.innerHTML = insercoes.slice(0, 10).map((insercao, index) => `
+        <div class="insercao-item ${index < 3 ? 'nova' : ''}">
             <div class="insercao-header">
-                <div class="insercao-radio">${truncarTexto(insercao.stationName, 35)}</div>
+                <div class="insercao-radio">${truncarTexto(insercao.stationName, 25)}</div>
                 <div class="insercao-hora">${insercao.hour}</div>
             </div>
             <div class="insercao-detalhes">
                 ${insercao.city}${insercao.uf ? '/' + insercao.uf : ''}
-            </div>
-            <div class="insercao-cliente">
-                ${truncarTexto(insercao.client, 40)}
             </div>
         </div>
     `).join('');
@@ -247,25 +245,23 @@ function criarPinga(animacao, container, bounds) {
     pinga.id = animacao.id;
 
     // Converter coordenadas geográficas para pixels
-    // Brasil: lat ~= -33 a 5, lng ~= -73 a -34
     const pos = coordenadasParaPixels(animacao.lat, animacao.lng, bounds);
 
     pinga.style.left = `${pos.x}px`;
     pinga.style.top = `${pos.y}px`;
 
+    // Tooltip automático sempre visível
     pinga.innerHTML = `
         <div class="pinga-circle"></div>
         <div class="pinga-ripple"></div>
+        <div class="tooltip-auto">
+            <div class="tooltip-auto-content">
+                <strong>${animacao.dados.emissora}</strong>
+                <div>${animacao.dados.cidade}/${animacao.dados.uf}</div>
+                <div>${animacao.dados.horario}</div>
+            </div>
+        </div>
     `;
-
-    // Tooltip
-    pinga.addEventListener('mouseenter', (e) => {
-        mostrarTooltip(e, animacao.dados);
-    });
-
-    pinga.addEventListener('mouseleave', () => {
-        esconderTooltip();
-    });
 
     container.appendChild(pinga);
     animacoesAtivas.set(animacao.id, pinga);

@@ -85,7 +85,7 @@ async function handleDashboard(env, corsHeaders) {
                     minutoAtual
                 );
 
-                if (minutosDesdeAtualizacao < 5) {
+                if (minutosDesdeAtualizacao < 2) {
                     precisaAtualizar = false;
                     console.log(`✅ Cache válido (${minutosDesdeAtualizacao} min)`);
                 }
