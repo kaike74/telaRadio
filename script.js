@@ -15,7 +15,7 @@ const CONFIG = {
 let dashboardData = null;
 let animacoesAtivas = new Map();
 let mapaViewBox = { width: 1000, height: 1000 };
-let insercoesExibidas = 0; // Contador de inserções que já apareceram no mapa
+let insercoesExibidasSet = new Set(); // Set de IDs de inserções que já apareceram
 
 // =========================
 // INICIALIZAÇÃO
@@ -228,19 +228,22 @@ function atualizarAnimacoes(novasAnimacoes) {
         }
     });
 
-    // Adicionar novas animações
+    // Adicionar novas animações e rastrear inserções únicas
     novasAnimacoes.forEach(animacao => {
+        // Adicionar ao set de inserções exibidas (acumula ao longo do dia)
+        insercoesExibidasSet.add(animacao.id);
+
         if (!animacoesAtivas.has(animacao.id)) {
             criarPinga(animacao, container, bounds);
         }
     });
 
     // Atualizar contador de inserções exibidas (métricas em tempo real)
-    insercoesExibidas = animacoesAtivas.size;
-    document.getElementById('metrica-insercoes').textContent = insercoesExibidas;
+    // Conta TODAS as inserções que já apareceram, não apenas as ativas
+    document.getElementById('metrica-insercoes').textContent = insercoesExibidasSet.size;
 
     if (novasAnimacoes.length > 0) {
-        console.log(`✨ ${novasAnimacoes.length} animações ativas`);
+        console.log(`✨ ${novasAnimacoes.length} animações ativas | Total exibido: ${insercoesExibidasSet.size}`);
     }
 }
 
