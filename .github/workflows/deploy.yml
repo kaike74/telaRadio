@@ -1,0 +1,66 @@
+name: Deploy Dashboard Rádio
+
+on:
+  push:
+    branches:
+      - main
+      - claude/*
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy-worker:
+    name: Deploy Cloudflare Worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: |
+          cd worker
+          npm install
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: 'worker'
+          command: deploy
+
+  deploy-frontend:
+    name: Deploy Frontend (Cloudflare Pages)
+    runs-on: ubuntu-latest
+    needs: deploy-worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: dashboard-radio
+          directory: .
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [deploy-worker, deploy-frontend]
+    if: always()
+    steps:
+      - name: Deployment Success
+        if: ${{ success() }}
+        run: echo "✅ Deploy completo com sucesso!"
+
+      - name: Deployment Failed
+        if: ${{ failure() }}
+        run: echo "❌ Deploy falhou. Verifique os logs."
