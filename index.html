@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard de Monitoramento - Rádio</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="dashboard-container">
         <!-- Coluna Esquerda (60%) -->
@@ -16,16 +18,13 @@
                 <div class="mapa-content-wrapper">
                     <!-- Mapa (75% da largura) -->
                     <div id="mapa-container">
-                        <svg id="mapa-brasil" viewBox="0 0 1000 1000">
-                            <!-- SVG do mapa será carregado aqui -->
-                            <text x="500" y="500" text-anchor="middle" fill="#666" font-size="20">
-                                Mapa do Brasil será carregado aqui
-                            </text>
-                        </svg>
+                        <object id="mapa-brasil" data="mapa-brasil.svg" type="image/svg+xml" width="100%" height="100%">
+                            Mapa do Brasil
+                        </object>
                         <!-- Container de animações -->
                         <div id="animacoes-layer"></div>
                     </div>
-                    
+
                     <!-- Lista de Inserções (25% da largura) -->
                     <div class="insercoes-lateral">
                         <h4>Últimas Inserções</h4>
@@ -34,7 +33,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="legenda">
                     <span class="legenda-item">
                         <span class="pinga-demo"></span>
@@ -92,4 +91,5 @@
 
     <script src="script.js"></script>
 </body>
+
 </html>

@@ -15,6 +15,7 @@ const CONFIG = {
 let dashboardData = null;
 let animacoesAtivas = new Map();
 let mapaViewBox = { width: 1000, height: 1000 };
+let insercoesExibidasSet = new Set(); // Set de IDs de inserções que já apareceram
 
 // =========================
 // INICIALIZAÇÃO
@@ -227,15 +228,22 @@ function atualizarAnimacoes(novasAnimacoes) {
         }
     });
 
-    // Adicionar novas animações
+    // Adicionar novas animações e rastrear inserções únicas
     novasAnimacoes.forEach(animacao => {
+        // Adicionar ao set de inserções exibidas (acumula ao longo do dia)
+        insercoesExibidasSet.add(animacao.id);
+
         if (!animacoesAtivas.has(animacao.id)) {
             criarPinga(animacao, container, bounds);
         }
     });
 
+    // Atualizar contador de inserções exibidas (métricas em tempo real)
+    // Conta TODAS as inserções que já apareceram, não apenas as ativas
+    document.getElementById('metrica-insercoes').textContent = insercoesExibidasSet.size;
+
     if (novasAnimacoes.length > 0) {
-        console.log(`✨ ${novasAnimacoes.length} animações ativas`);
+        console.log(`✨ ${novasAnimacoes.length} animações ativas | Total exibido: ${insercoesExibidasSet.size}`);
     }
 }
 
@@ -244,8 +252,8 @@ function criarPinga(animacao, container, bounds) {
     pinga.className = 'pinga';
     pinga.id = animacao.id;
 
-    // Converter coordenadas geográficas para pixels
-    const pos = coordenadasParaPixels(animacao.lat, animacao.lng, bounds);
+    // Converter coordenadas geográficas para pixels do SVG
+    const pos = coordenadasParaPixels(animacao.lat, animacao.lng);
 
     pinga.style.left = `${pos.x}px`;
     pinga.style.top = `${pos.y}px`;
@@ -267,23 +275,21 @@ function criarPinga(animacao, container, bounds) {
     animacoesAtivas.set(animacao.id, pinga);
 }
 
-function coordenadasParaPixels(lat, lng, bounds) {
-    // Mapeamento aproximado do Brasil
-    // Latitude: 5 (norte) a -33 (sul)
-    // Longitude: -73 (oeste) a -34 (leste)
+function coordenadasParaPixels(lat, lng) {
+    // ViewBox do SVG: 0 0 612.52 639.04
+    // GeoViewBox do mapa-brasil.svg: -74.008595 5.275696 -34.789914 -33.743888
 
-    const latMin = -33;
-    const latMax = 5;
-    const lngMin = -73;
-    const lngMax = -34;
+    const geoMinLng = -74.008595;
+    const geoMaxLat = 5.275696;
+    const geoMaxLng = -34.789914;
+    const geoMinLat = -33.743888;
 
-    // Normalizar (0 a 1)
-    const latNorm = (lat - latMin) / (latMax - latMin);
-    const lngNorm = (lng - lngMin) / (lngMax - lngMin);
+    const svgWidth = 612.52;
+    const svgHeight = 639.04;
 
-    // Inverter latitude (SVG tem Y crescente para baixo)
-    const x = lngNorm * bounds.width;
-    const y = (1 - latNorm) * bounds.height;
+    // Normalizar coordenadas geográficas para o viewBox do SVG
+    const x = ((lng - geoMinLng) / (geoMaxLng - geoMinLng)) * svgWidth;
+    const y = ((geoMaxLat - lat) / (geoMaxLat - geoMinLat)) * svgHeight;
 
     return { x, y };
 }
