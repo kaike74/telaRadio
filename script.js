@@ -15,7 +15,7 @@ const CONFIG = {
 let dashboardData = null;
 let animacoesAtivas = new Map();
 let mapaViewBox = { width: 1000, height: 1000 };
-let contadorInsercoes = 0; // Contador numérico simples
+let insercoesExibidasSet = new Set(); // Set de IDs de inserções que já apareceram
 
 // =========================
 // INICIALIZAÇÃO
@@ -44,10 +44,16 @@ document.addEventListener('DOMContentLoaded', () => {
 function inicializarMapa() {
     const mapaSvg = document.getElementById('mapa-brasil');
 
-    // Carregar SVG externo via object
+    // Por enquanto, criar um placeholder até o SVG ser fornecido
+    // O usuário disse que vai buscar o SVG depois
     mapaSvg.innerHTML = `
-        <object id="svg-object" data="mapa-brasil.svg" type="image/svg+xml" style="width: 100%; height: 100%; pointer-events: none;">
-        </object>
+        <rect width="1000" height="1000" fill="#1a3a4a" opacity="0.3"/>
+        <text x="500" y="500" text-anchor="middle" fill="#00d4ff" font-size="24" opacity="0.5">
+            Mapa do Brasil
+        </text>
+        <text x="500" y="540" text-anchor="middle" fill="#fff" font-size="16" opacity="0.4">
+            (Aguardando SVG)
+        </text>
     `;
 
     console.log('🗺️ Mapa inicializado');
@@ -111,12 +117,7 @@ function renderizarDashboard(data) {
     // Métricas
     document.getElementById('metrica-campanhas').textContent = data.metricas.campanhasAtivas || 0;
     document.getElementById('metrica-radios').textContent = data.metricas.emissorasAtivas || 0;
-
-    // Inicializar contador com o valor do servidor (que já tem o delay aplicado)
-    if (contadorInsercoes === 0 || data.metricas.insercoesHoje > contadorInsercoes) {
-        contadorInsercoes = data.metricas.insercoesHoje;
-    }
-    document.getElementById('metrica-insercoes').textContent = contadorInsercoes;
+    document.getElementById('metrica-insercoes').textContent = data.metricas.insercoesHoje || 0;
 
     // Gráficos
     renderizarGraficoEmissoras(data.metricas.topEmissoras || []);
@@ -227,18 +228,22 @@ function atualizarAnimacoes(novasAnimacoes) {
         }
     });
 
-    // Adicionar novas animações
+    // Adicionar novas animações e rastrear inserções únicas
     novasAnimacoes.forEach(animacao => {
+        // Adicionar ao set de inserções exibidas (acumula ao longo do dia)
+        insercoesExibidasSet.add(animacao.id);
+
         if (!animacoesAtivas.has(animacao.id)) {
             criarPinga(animacao, container, bounds);
-            // Incrementar contador apenas para novas animações que aparecem na tela
-            contadorInsercoes++;
-            document.getElementById('metrica-insercoes').textContent = contadorInsercoes;
         }
     });
 
+    // Atualizar contador de inserções exibidas (métricas em tempo real)
+    // Conta TODAS as inserções que já apareceram, não apenas as ativas
+    document.getElementById('metrica-insercoes').textContent = insercoesExibidasSet.size;
+
     if (novasAnimacoes.length > 0) {
-        console.log(`✨ ${novasAnimacoes.length} animações ativas`);
+        console.log(`✨ ${novasAnimacoes.length} animações ativas | Total exibido: ${insercoesExibidasSet.size}`);
     }
 }
 
@@ -388,6 +393,40 @@ if (window.location.hostname === 'localhost' || window.location.hostname === '12
     console.warn('⚠️ MODO DESENVOLVIMENTO - Usando dados mock');
 
     CONFIG.API_BASE = 'https://dashboard-radio-worker.seu-usuario.workers.dev';
+
+    // Descomentar para testar com dados fake:
+    /*
+    setTimeout(() => {
+        renderizarDashboard({
+            success: true,
+            metricas: {
+                campanhasAtivas: 31,
+                emissorasAtivas: 101,
+                insercoesHoje: 509,
+                topEmissoras: [
+                    { emissora: "Rádio Nativa FM (95.3) - SC | Joinville", campanhas: 12 },
+                    { emissora: "Rádio Gazeta (98.7) - SP | São Paulo", campanhas: 10 },
+                    { emissora: "Rádio Atlântida (102.5) - RS | Porto Alegre", campanhas: 8 }
+                ],
+                topCidades: [
+                    { cidade: "São Paulo/SP", emissoras: 25 },
+                    { cidade: "Rio de Janeiro/RJ", emissoras: 18 },
+                    { cidade: "Belo Horizonte/MG", emissoras: 15 }
+                ],
+                ultimaAtualizacao: "15:25"
+            },
+            insercoesRecentes: [
+                {
+                    stationName: "Rádio Nativa FM",
+                    city: "Joinville",
+                    uf: "SC",
+                    client: "Cliente Exemplo",
+                    hour: "15:23:45"
+                }
+            ]
+        });
+    }, 500);
+    */
 }
 
 console.log('✅ Script carregado');

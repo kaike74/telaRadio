@@ -7,7 +7,6 @@ const API_KEY = "9620cf74-856d-40c2-a091-248e4f322caa";
 const GEONAMES_USERNAME = "kaike";
 const DELAY_HORAS = 2; // Delay da API original
 const DURACAO_ANIMACAO_SEGUNDOS = 30; // Duração da animação no mapa
-const CACHE_TTL = 120; // 2 minutos
 
 export default {
     async fetch(request, env, ctx) {
@@ -29,14 +28,12 @@ export default {
             // Routing
             if (url.pathname === "/api/dashboard") {
                 return await handleDashboard(env, corsHeaders);
-            } else if (url.pathname === "/api/dashboard/incremental") {
-                return await handleDashboardIncremental(env, corsHeaders);
             } else if (url.pathname === "/api/insercoes/recentes") {
                 return await handleInsercoesRecentes(env, corsHeaders);
             } else {
                 return new Response(JSON.stringify({
                     error: "Endpoint não encontrado",
-                    endpoints: ["/api/dashboard", "/api/dashboard/incremental", "/api/insercoes/recentes"]
+                    endpoints: ["/api/dashboard", "/api/insercoes/recentes"]
                 }), {
                     status: 404,
                     headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -73,7 +70,7 @@ async function handleDashboard(env, corsHeaders) {
 
     console.log(`⏰ Horário Brasília: ${dataHoje} ${horaAtual}:${minutoAtual}`);
 
-    // Verificar se precisa atualizar (cache de 2 minutos)
+    // Verificar se precisa atualizar (cache de 5 minutos)
     let precisaAtualizar = true;
 
     if (env.DASHBOARD_KV) {
@@ -158,14 +155,10 @@ async function handleDashboard(env, corsHeaders) {
 
     // 5. Calcular métricas
     const metricas = calcularMetricas(
-        todasInsercoes, // Passar todas para filtrar por delay dentro da função
+        insercoesRecentes,
         campanhasAtivas,
-        emissorasProgramadas,
-        agoraBrasilia // Passar hora atual para cálculo do delay
+        emissorasProgramadas
     );
-
-    // Filtrar inserções recentes para a lista (respeitando delay)
-    const insercoesLista = filtrarInsercoesDelay(todasInsercoes, agoraBrasilia);
 
     // 6. Preparar resposta
     const resultado = {
@@ -174,13 +167,13 @@ async function handleDashboard(env, corsHeaders) {
         fromCache: false,
         metricas: metricas,
         coordenadas: coordenadas,
-        insercoesRecentes: insercoesLista.slice(0, 20), // Top 20 para a lista lateral
+        insercoesRecentes: insercoesRecentes.slice(0, 100),
         debug: {
             totalCampanhas: todasCampanhas.length,
             campanhasAtivas: campanhasAtivas.length,
             emissorasProgramadas: emissorasProgramadas.length,
             totalInsercoes: todasInsercoes.length,
-            insercoesLista: insercoesLista.length,
+            insercoesRecentes: insercoesRecentes.length,
             horaProcessamento: `${horaAtual}:${minutoAtual}`
         }
     };
@@ -220,42 +213,6 @@ async function handleDashboard(env, corsHeaders) {
             "X-Cache-Status": "MISS"
         }
     });
-}
-
-// ===== ENDPOINT: Dashboard Incremental =====
-async function handleDashboardIncremental(env, corsHeaders) {
-    console.log("🔄 GET /api/dashboard/incremental");
-    const agora = new Date();
-    const offsetBrasilia = -3 * 60;
-    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-    const dataHoje = agoraBrasilia.toISOString().split('T')[0];
-    const CACHE_KEY_DASHBOARD = `dashboard-completo-${dataHoje}`;
-
-    if (!env.DASHBOARD_KV) {
-        return new Response(JSON.stringify({ error: "KV não configurado" }), { headers: corsHeaders });
-    }
-
-    try {
-        // Tentar pegar do cache primeiro
-        const cacheCompleto = await env.DASHBOARD_KV.get(CACHE_KEY_DASHBOARD);
-        if (cacheCompleto) {
-            const dados = JSON.parse(cacheCompleto);
-            // Aqui poderíamos buscar apenas delta, mas por enquanto retornamos o cache
-            // A lógica de atualização real aconteceria em background ou via trigger
-            return new Response(JSON.stringify({
-                ...dados,
-                fromCache: true,
-                tipo: "incremental"
-            }), {
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-            });
-        }
-
-        // Se não tiver cache, faz full load
-        return handleDashboard(env, corsHeaders);
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: corsHeaders });
-    }
 }
 
 // ===== ENDPOINT: Inserções Recentes (para animações) =====
@@ -576,31 +533,8 @@ async function processarCoordenadas(insercoes, kvNamespace, dataHoje) {
     return Array.from(coordenadasMap.values());
 }
 
-function filtrarInsercoesDelay(insercoes, agoraBrasilia) {
-    // Retorna inserções que aconteceram até (agora - delay)
-    // Mas que não sejam muito antigas (ex: janela de 1 hora antes do delay)
-    const momentoDelay = new Date(agoraBrasilia.getTime() - DELAY_HORAS * 60 * 60 * 1000);
-    const janelaInicio = new Date(momentoDelay.getTime() - 60 * 60 * 1000); // 1 hora de janela
-
-    return insercoes.filter(i => {
-        const dataInsercao = new Date(`${i.date} ${i.hour}`);
-        return dataInsercao <= momentoDelay && dataInsercao >= janelaInicio;
-    }).sort((a, b) => {
-        // Ordenar decrescente (mais recentes primeiro)
-        return new Date(`${b.date} ${b.hour}`) - new Date(`${a.date} ${a.hour}`);
-    });
-}
-
-function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, agoraBrasilia) {
-    // Filtrar inserções considerando o delay para a métrica "Hoje"
-    // "Hoje" no dashboard significa "Até o momento do delay"
-    const momentoDelay = new Date(agoraBrasilia.getTime() - DELAY_HORAS * 60 * 60 * 1000);
-    const insercoesValidas = insercoes.filter(i => {
-        const dataInsercao = new Date(`${i.date} ${i.hour}`);
-        return dataInsercao <= momentoDelay;
-    });
-
-    const cidadesAtivas = new Set(insercoesValidas.map(i => i.city).filter(Boolean)).size;
+function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
+    const cidadesAtivas = new Set(insercoes.map(i => i.city).filter(Boolean)).size;
 
     // Top emissoras por campanhas
     const topEmissoras = emissorasProgramadas
@@ -642,17 +576,18 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, agor
             emissoras: praca.emissoras
         }));
 
-    // Hora de atualização exibida deve ser a hora do delay (o "agora" do dashboard)
-    const horaExibicao = momentoDelay;
+    const horaAtual = new Date();
+    const offsetBrasilia = -3 * 60;
+    const horaBrasilia = new Date(horaAtual.getTime() + offsetBrasilia * 60 * 1000);
 
     return {
         campanhasAtivas: campanhasAtivas.length,
         emissorasAtivas: emissorasProgramadas.length,
-        insercoesHoje: insercoesValidas.length,
+        insercoesHoje: insercoes.length,
         cidadesAtivas: cidadesAtivas,
         topEmissoras: topEmissoras,
         topCidades: topCidades,
-        ultimaAtualizacao: horaExibicao.toLocaleTimeString('pt-BR', {
+        ultimaAtualizacao: horaBrasilia.toLocaleTimeString('pt-BR', {
             hour: '2-digit',
             minute: '2-digit'
         })
