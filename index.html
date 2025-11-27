@@ -13,29 +13,33 @@
             <!-- Mapa do Brasil (60% altura) -->
             <div class="mapa-section">
                 <h2>Inserções em Tempo Real</h2>
-                <div id="mapa-container">
-                    <svg id="mapa-brasil" viewBox="0 0 1000 1000">
-                        <!-- SVG do mapa será carregado aqui -->
-                        <text x="500" y="500" text-anchor="middle" fill="#666" font-size="20">
-                            Mapa do Brasil será carregado aqui
-                        </text>
-                    </svg>
-                    <!-- Container de animações -->
-                    <div id="animacoes-layer"></div>
+                <div class="mapa-content-wrapper">
+                    <!-- Mapa (75% da largura) -->
+                    <div id="mapa-container">
+                        <svg id="mapa-brasil" viewBox="0 0 1000 1000">
+                            <!-- SVG do mapa será carregado aqui -->
+                            <text x="500" y="500" text-anchor="middle" fill="#666" font-size="20">
+                                Mapa do Brasil será carregado aqui
+                            </text>
+                        </svg>
+                        <!-- Container de animações -->
+                        <div id="animacoes-layer"></div>
+                    </div>
+                    
+                    <!-- Lista de Inserções (25% da largura) -->
+                    <div class="insercoes-lateral">
+                        <h4>Últimas Inserções</h4>
+                        <div id="lista-insercoes-lateral" class="lista-lateral">
+                            <div class="loading">Carregando...</div>
+                        </div>
+                    </div>
                 </div>
+                
                 <div class="legenda">
                     <span class="legenda-item">
                         <span class="pinga-demo"></span>
                         Inserção em execução (últimos 30s)
                     </span>
-                </div>
-            </div>
-
-            <!-- Lista de Inserções (40% altura) -->
-            <div class="insercoes-section">
-                <h3>Últimas Inserções</h3>
-                <div id="lista-insercoes" class="lista-scroll">
-                    <div class="loading">Carregando inserções...</div>
                 </div>
             </div>
         </div>
