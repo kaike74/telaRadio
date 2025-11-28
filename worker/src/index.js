@@ -5,8 +5,9 @@
 
 const API_KEY = "9620cf74-856d-40c2-a091-248e4f322caa";
 const GEONAMES_USERNAME = "kaike";
-const DELAY_HORAS = 2; // Delay da API original
+const DELAY_HORAS = 2; // Delay da API original (dados aparecem 2h depois)
 const DURACAO_ANIMACAO_SEGUNDOS = 30; // Duração da animação no mapa
+const TEMPO_SIMULADO_DELAY_HORAS = 2; // Dashboard simula estar 2h atrás do tempo real
 
 export default {
     async fetch(request, env, ctx) {
@@ -57,21 +58,26 @@ export default {
 async function handleDashboard(env, corsHeaders) {
     console.log("📊 GET /api/dashboard");
 
+    // IMPORTANTE: Usar tempo simulado (2h atrás) para simular "ao vivo"
+    const tempoInfo = calcularTempoSimulado();
+    const { data: dataHoje, hora: horaAtual, minuto: minutoAtual, horaNum, minutoNum } = tempoInfo;
+
+    // Tempo real para logs
     const agora = new Date();
     const offsetBrasilia = -3 * 60;
     const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-
-    const dataHoje = agoraBrasilia.toISOString().split('T')[0];
-    const horaAtual = String(agoraBrasilia.getHours()).padStart(2, '0');
-    const minutoAtual = String(agoraBrasilia.getMinutes()).padStart(2, '0');
+    const horaRealBrasilia = String(agoraBrasilia.getHours()).padStart(2, '0');
+    const minutoRealBrasilia = String(agoraBrasilia.getMinutes()).padStart(2, '0');
 
     const CACHE_KEY_DASHBOARD = `dashboard-completo-${dataHoje}`;
     const CACHE_KEY_ULTIMA_ATUALIZACAO = `ultima-atualizacao-${dataHoje}`;
 
-    console.log(`⏰ Horário Brasília: ${dataHoje} ${horaAtual}:${minutoAtual}`);
+    console.log(`⏰ Horário Real: ${horaRealBrasilia}:${minutoRealBrasilia} | Simulado (dashboard): ${horaAtual}:${minutoAtual}`);
 
-    // Verificar se precisa atualizar (cache de 5 minutos)
+    // CACHE INTELIGENTE: Verificar se precisa atualizar
+    // Sistema verifica a cada 2-5 min se há dados novos da API
     let precisaAtualizar = true;
+    let cacheStatus = 'MISS';
 
     if (env.DASHBOARD_KV) {
         try {
@@ -85,10 +91,17 @@ async function handleDashboard(env, corsHeaders) {
                     minutoAtual
                 );
 
+                // Cache válido por 2-5 minutos
+                // Isso permite verificar constantemente se há dados novos sem sobrecarregar a API
                 if (minutosDesdeAtualizacao < 2) {
                     precisaAtualizar = false;
-                    console.log(`✅ Cache válido (${minutosDesdeAtualizacao} min)`);
+                    cacheStatus = 'HIT';
+                    console.log(`✅ Cache válido (${minutosDesdeAtualizacao} min desde última atualização)`);
+                } else {
+                    console.log(`🔄 Cache expirado (${minutosDesdeAtualizacao} min) - buscando dados novos`);
                 }
+            } else {
+                console.log(`🆕 Primeiro acesso - criando cache`);
             }
         } catch (error) {
             console.log(`⚠️ Erro ao verificar cache: ${error.message}`);
@@ -101,17 +114,26 @@ async function handleDashboard(env, corsHeaders) {
             const cacheCompleto = await env.DASHBOARD_KV.get(CACHE_KEY_DASHBOARD);
             if (cacheCompleto) {
                 const dados = JSON.parse(cacheCompleto);
-                console.log(`💾 Retornando do cache`);
+                console.log(`💾 Retornando do cache - economizando chamadas à API`);
+
+                // Recalcular métricas com tempo simulado atual (pode ter mudado)
+                const tempoInfoAtual = calcularTempoSimulado();
 
                 return new Response(JSON.stringify({
                     ...dados,
                     fromCache: true,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    tempoSimulado: `${tempoInfoAtual.hora}:${tempoInfoAtual.minuto}`,
+                    metricas: {
+                        ...dados.metricas,
+                        ultimaAtualizacao: `${tempoInfoAtual.hora}:${tempoInfoAtual.minuto}`
+                    }
                 }), {
                     headers: {
                         ...corsHeaders,
                         "Content-Type": "application/json",
-                        "X-Cache-Status": "HIT"
+                        "X-Cache-Status": "HIT",
+                        "X-Tempo-Simulado": `${tempoInfoAtual.hora}:${tempoInfoAtual.minuto}`
                     }
                 });
             }
@@ -136,12 +158,12 @@ async function handleDashboard(env, corsHeaders) {
     // 2. Buscar emissoras programadas
     const emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas);
 
-    // 3. Buscar inserções
+    // 3. Buscar inserções (usando tempo simulado)
     const { insercoesRecentes, todasInsercoes } = await buscarInsercoes(
         campanhasAtivas,
         dataHoje,
-        horaAtual,
-        minutoAtual
+        horaNum,
+        minutoNum
     );
 
     console.log(`📻 ${insercoesRecentes.length} inserções recentes`);
@@ -165,6 +187,8 @@ async function handleDashboard(env, corsHeaders) {
         success: true,
         timestamp: new Date().toISOString(),
         fromCache: false,
+        tempoSimulado: `${horaAtual}:${minutoAtual}`,
+        tempoReal: `${horaRealBrasilia}:${minutoRealBrasilia}`,
         metricas: metricas,
         coordenadas: coordenadas,
         insercoesRecentes: insercoesRecentes.slice(0, 100),
@@ -174,7 +198,10 @@ async function handleDashboard(env, corsHeaders) {
             emissorasProgramadas: emissorasProgramadas.length,
             totalInsercoes: todasInsercoes.length,
             insercoesRecentes: insercoesRecentes.length,
-            horaProcessamento: `${horaAtual}:${minutoAtual}`
+            horaProcessamento: `${horaAtual}:${minutoAtual}`,
+            tempoSimulado: `${horaAtual}:${minutoAtual}`,
+            tempoReal: `${horaRealBrasilia}:${minutoRealBrasilia}`,
+            delaySimulado: `${TEMPO_SIMULADO_DELAY_HORAS}h`
         }
     };
 
@@ -210,7 +237,10 @@ async function handleDashboard(env, corsHeaders) {
         headers: {
             ...corsHeaders,
             "Content-Type": "application/json",
-            "X-Cache-Status": "MISS"
+            "X-Cache-Status": "MISS",
+            "X-Tempo-Simulado": `${horaAtual}:${minutoAtual}`,
+            "X-Tempo-Real": `${horaRealBrasilia}:${minutoRealBrasilia}`,
+            "X-Cache-Info": "Dados atualizados da API"
         }
     });
 }
@@ -219,11 +249,9 @@ async function handleDashboard(env, corsHeaders) {
 async function handleInsercoesRecentes(env, corsHeaders) {
     console.log("🔥 GET /api/insercoes/recentes");
 
-    const agora = new Date();
-    const offsetBrasilia = -3 * 60;
-    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-
-    const dataHoje = agoraBrasilia.toISOString().split('T')[0];
+    // IMPORTANTE: Usar tempo simulado (2h atrás)
+    const tempoInfo = calcularTempoSimulado();
+    const dataHoje = tempoInfo.data;
 
     // Ler inserções do cache
     if (!env.DASHBOARD_KV) {
@@ -251,11 +279,11 @@ async function handleInsercoesRecentes(env, corsHeaders) {
 
         const { insercoesRecentes, coordenadas } = JSON.parse(cacheInsercoes);
 
-        // Calcular quais inserções devem estar animando AGORA
+        // Calcular quais inserções devem estar animando AGORA (usando tempo simulado)
         const animacoes = calcularAnimacoesAtivas(
             insercoesRecentes,
             coordenadas,
-            agoraBrasilia
+            tempoInfo.tempoSimulado
         );
 
         console.log(`✨ ${animacoes.length} animações ativas agora`);
@@ -289,6 +317,28 @@ async function handleInsercoesRecentes(env, corsHeaders) {
 }
 
 // ===== FUNÇÕES AUXILIARES =====
+
+/**
+ * Calcula o tempo simulado (2h atrás do tempo real)
+ * Isso permite que o dashboard mostre dados "ao vivo" mesmo com a API tendo delay de 2h
+ */
+function calcularTempoSimulado() {
+    const agora = new Date();
+    const offsetBrasilia = -3 * 60; // UTC-3
+    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
+
+    // Subtrair 2h para simular tempo atrasado
+    const tempoSimulado = new Date(agoraBrasilia.getTime() - TEMPO_SIMULADO_DELAY_HORAS * 60 * 60 * 1000);
+
+    return {
+        tempoSimulado: tempoSimulado,
+        data: tempoSimulado.toISOString().split('T')[0],
+        hora: String(tempoSimulado.getHours()).padStart(2, '0'),
+        minuto: String(tempoSimulado.getMinutes()).padStart(2, '0'),
+        horaNum: tempoSimulado.getHours(),
+        minutoNum: tempoSimulado.getMinutes()
+    };
+}
 
 async function buscarTodasCampanhas() {
     const todasCampanhas = [];
@@ -576,9 +626,8 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
             emissoras: praca.emissoras
         }));
 
-    const horaAtual = new Date();
-    const offsetBrasilia = -3 * 60;
-    const horaBrasilia = new Date(horaAtual.getTime() + offsetBrasilia * 60 * 1000);
+    // USAR TEMPO SIMULADO para mostrar a "hora atual" no dashboard
+    const tempoInfo = calcularTempoSimulado();
 
     return {
         campanhasAtivas: campanhasAtivas.length,
@@ -587,14 +636,11 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
         cidadesAtivas: cidadesAtivas,
         topEmissoras: topEmissoras,
         topCidades: topCidades,
-        ultimaAtualizacao: horaBrasilia.toLocaleTimeString('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit'
-        })
+        ultimaAtualizacao: `${tempoInfo.hora}:${tempoInfo.minuto}`
     };
 }
 
-function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, agoraBrasilia) {
+function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoSimulado) {
     const animacoes = [];
     const coordenadasMap = new Map(coordenadas.map(c => [c.cidade, c]));
 
@@ -604,25 +650,28 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, agoraBrasilia) 
         const coords = coordenadasMap.get(insercao.city);
         if (!coords) return;
 
-        // Calcular quando a inserção rodou (com delay de 2h)
+        // LÓGICA CORRIGIDA PARA TEMPO SIMULADO:
+        // 1. Inserção aconteceu em horário X (ex: 13:30) - registrado na API
+        // 2. No tempo simulado, se são "13:30 simulado", inserções de 13:30 devem animar agora
+        // 3. Animação dura 30s após o horário da inserção
+
         const [horaInsercao, minutoInsercao, segundoInsercao = 0] = insercao.hour.split(':').map(Number);
 
-        const momentoInsercao = new Date(agoraBrasilia);
+        // Criar momento da inserção no mesmo dia do tempo simulado
+        const momentoInsercao = new Date(tempoSimulado);
         momentoInsercao.setHours(horaInsercao, minutoInsercao, segundoInsercao, 0);
 
-        // Adicionar delay de 2h
-        const momentoComDelay = new Date(momentoInsercao.getTime() + DELAY_HORAS * 60 * 60 * 1000);
+        // Fim da animação: 30s após a inserção
+        const fimAnimacao = new Date(momentoInsercao.getTime() + DURACAO_ANIMACAO_SEGUNDOS * 1000);
 
-        // Calcular fim da animação (30s depois)
-        const fimAnimacao = new Date(momentoComDelay.getTime() + DURACAO_ANIMACAO_SEGUNDOS * 1000);
-
-        // Verificar se está no período de animação
-        if (agoraBrasilia >= momentoComDelay && agoraBrasilia <= fimAnimacao) {
+        // Verificar se a inserção deve estar animando no tempo simulado atual
+        // Anima se: tempo simulado >= hora da inserção E tempo simulado <= hora + 30s
+        if (tempoSimulado >= momentoInsercao && tempoSimulado <= fimAnimacao) {
             animacoes.push({
                 id: `${insercao.city}-${insercao.hour}-${insercao.stationName}`,
                 lat: coords.lat,
                 lng: coords.lng,
-                startTime: momentoComDelay.toISOString(),
+                startTime: momentoInsercao.toISOString(),
                 endTime: fimAnimacao.toISOString(),
                 dados: {
                     emissora: insercao.stationName,

@@ -276,20 +276,29 @@ function criarPinga(animacao, container, bounds) {
 }
 
 function coordenadasParaPixels(lat, lng) {
-    // ViewBox do SVG: 0 0 612.52 639.04
+    // ViewBox do SVG: 0 0 612.51611 639.04297
     // GeoViewBox do mapa-brasil.svg: -74.008595 5.275696 -34.789914 -33.743888
+    // Formato: minLng maxLat maxLng minLat
 
-    const geoMinLng = -74.008595;
-    const geoMaxLat = 5.275696;
-    const geoMaxLng = -34.789914;
-    const geoMinLat = -33.743888;
+    const geoMinLng = -74.008595;  // Extremo oeste (esquerda)
+    const geoMaxLat = 5.275696;     // Extremo norte (topo)
+    const geoMaxLng = -34.789914;   // Extremo leste (direita)
+    const geoMinLat = -33.743888;   // Extremo sul (base)
 
-    const svgWidth = 612.52;
-    const svgHeight = 639.04;
+    const svgWidth = 612.51611;
+    const svgHeight = 639.04297;
 
-    // Normalizar coordenadas geográficas para o viewBox do SVG
+    // Normalizar coordenadas geográficas para pixels do SVG
+    // X: longitude de oeste (-74) a leste (-34)
     const x = ((lng - geoMinLng) / (geoMaxLng - geoMinLng)) * svgWidth;
+
+    // Y: latitude de norte (5) a sul (-33), invertida pois SVG cresce para baixo
     const y = ((geoMaxLat - lat) / (geoMaxLat - geoMinLat)) * svgHeight;
+
+    // Debug para verificar conversões
+    if (window.DEBUG_COORDS) {
+        console.log(`📍 Convertendo: lat=${lat}, lng=${lng} → x=${x.toFixed(2)}, y=${y.toFixed(2)}`);
+    }
 
     return { x, y };
 }
