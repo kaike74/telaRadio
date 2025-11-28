@@ -85,34 +85,33 @@ async function handleDashboard(env, corsHeaders) {
     // 2. Buscar emissoras programadas (TODAS as campanhas, não só 15)
     const emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas);
 
-    // 3. Buscar inserções ATUALIZADAS (sem tempo simulado)
+    // 3. Buscar inserções ATUALIZADAS (SEM FILTRO DE HORA - retorna TODAS do dia)
     const { insercoesRecentes, todasInsercoes } = await buscarInsercoes(
         campanhasAtivas,
-        dataHoje,
-        horaNum,
-        minutoNum
+        dataHoje
     );
 
-    console.log(`📻 ${insercoesRecentes.length} inserções recentes até ${horaAtual}:${minutoAtual}`);
+    console.log(`📻 ${todasInsercoes.length} inserções TOTAIS do dia`);
+    console.log(`📊 Retornando TODAS as inserções (sem filtro de hora)`);
 
     // Mostrar as 5 mais recentes para debug
-    if (insercoesRecentes.length > 0) {
+    if (todasInsercoes.length > 0) {
         console.log(`🕐 5 INSERÇÕES MAIS RECENTES:`);
-        insercoesRecentes.slice(0, 5).forEach((ins, i) => {
+        todasInsercoes.slice(0, 5).forEach((ins, i) => {
             console.log(`   ${i+1}. ${ins.hour} - ${ins.stationName} - ${ins.city}`);
         });
     }
 
-    // 4. Processar coordenadas
+    // 4. Processar coordenadas (usar TODAS as inserções)
     const coordenadas = await processarCoordenadas(
-        insercoesRecentes,
+        todasInsercoes,
         env.DASHBOARD_KV,
         dataHoje
     );
 
-    // 5. Calcular métricas
+    // 5. Calcular métricas (usar TODAS as inserções)
     const metricas = calcularMetricas(
-        insercoesRecentes,
+        todasInsercoes,
         campanhasAtivas,
         emissorasProgramadas,
         horaAtual,
@@ -126,29 +125,34 @@ async function handleDashboard(env, corsHeaders) {
         fromCache: false,
         metricas: metricas,
         coordenadas: coordenadas,
-        insercoesRecentes: insercoesRecentes.slice(0, 100),
+        insercoesRecentes: todasInsercoes.slice(0, 500), // Retornar TODAS (limite 500)
         debug: {
             totalCampanhas: todasCampanhas.length,
             campanhasAtivas: campanhasAtivas.length,
             emissorasProgramadas: emissorasProgramadas.length,
             totalInsercoes: todasInsercoes.length,
-            insercoesRecentes: insercoesRecentes.length,
+            insercoesRetornadas: Math.min(todasInsercoes.length, 500),
             horaProcessamento: `${horaAtual}:${minutoAtual}`,
-            ultimaHoraEncontrada: insercoesRecentes[0]?.hour || 'Nenhuma'
+            ultimaHoraEncontrada: todasInsercoes[0]?.hour || 'Nenhuma',
+            observacao: 'Retornando TODAS inserções do dia (sem filtro de hora)'
         }
     };
 
     // 7. Salvar cache ATUALIZADO
     if (env.DASHBOARD_KV) {
         try {
-            // Salvar inserções e coordenadas para o endpoint /recentes
+            // Salvar TODAS as inserções e coordenadas
             await env.DASHBOARD_KV.put(
                 `insercoes-${dataHoje}`,
-                JSON.stringify({ insercoesRecentes, coordenadas, timestamp: Date.now() }),
+                JSON.stringify({
+                    insercoesRecentes: todasInsercoes,
+                    coordenadas: coordenadas,
+                    timestamp: Date.now()
+                }),
                 { expirationTtl: 86400 }
             );
 
-            console.log(`💾 Cache ATUALIZADO salvo`);
+            console.log(`💾 Cache ATUALIZADO salvo (${todasInsercoes.length} inserções)`);
         } catch (error) {
             console.log(`⚠️ Erro ao salvar cache: ${error.message}`);
         }
@@ -348,16 +352,11 @@ async function buscarEmissorasProgramadas(campanhasAtivas) {
     return emissorasProgramadas;
 }
 
-async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
-    console.log(`🔍 Buscando inserções ATUALIZADAS até ${horaAtual}:${minutoAtual}...`);
+async function buscarInsercoes(campanhas, dataHoje) {
+    console.log(`🔍 Buscando TODAS as inserções do dia ${dataHoje}...`);
+    console.log(`⚠️ SEM FILTRO DE HORA - retornando tudo`);
 
     const todasInsercoes = [];
-    const insercoesRecentes = [];
-
-    const horaAtualNum = parseInt(horaAtual);
-    const minutoAtualNum = parseInt(minutoAtual);
-
-    console.log(`🕐 Filtrando inserções até ${horaAtualNum}:${minutoAtualNum}`);
 
     // Processar em batches (3 por vez para evitar timeout)
     const batches = [];
@@ -382,8 +381,6 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                     const data = await response.json();
                     const items = data?.data?.lines || [];
 
-                    let recentesCount = 0;
-
                     items.forEach(item => {
                         if (!item.hour) return;
 
@@ -406,21 +403,10 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                         };
 
                         todasInsercoes.push(insercao);
-
-                        // FILTRO ATUALIZADO: Inserções até o minuto atual
-                        const isRecente = (
-                            (horaItem === horaAtualNum && minutoItem <= minutoAtualNum) ||
-                            (horaItem < horaAtualNum)
-                        );
-
-                        if (isRecente) {
-                            insercoesRecentes.push(insercao);
-                            recentesCount++;
-                        }
                     });
 
                     if (items.length > 0) {
-                        console.log(`   📊 ${campanha.name}: ${items.length} total, ${recentesCount} recentes`);
+                        console.log(`   📊 ${campanha.name}: ${items.length} inserções`);
                     }
                 }
 
@@ -437,19 +423,18 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     }
 
     // Ordenar por mais recente
-    insercoesRecentes.sort((a, b) => {
-        const timeA = new Date(`${dataHoje} ${a.hour}`);
-        const timeB = new Date(`${dataHoje} ${b.hour}`);
-        return timeB - timeA;
-    });
-
     todasInsercoes.sort((a, b) => {
         const timeA = new Date(`${dataHoje} ${a.hour}`);
         const timeB = new Date(`${dataHoje} ${b.hour}`);
         return timeB - timeA;
     });
 
-    return { insercoesRecentes, todasInsercoes };
+    console.log(`✅ Total de ${todasInsercoes.length} inserções encontradas`);
+
+    return {
+        insercoesRecentes: todasInsercoes, // Retornar todas
+        todasInsercoes: todasInsercoes
+    };
 }
 
 async function processarCoordenadas(insercoes, kvNamespace, dataHoje) {
