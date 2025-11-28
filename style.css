@@ -81,7 +81,7 @@ body {
     position: relative;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 10px;
-    overflow: hidden;
+    overflow: visible; /* Mudado de hidden para visible para não cortar pingas */
     display: flex;
     align-items: center;
     justify-content: center;

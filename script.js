@@ -288,16 +288,62 @@ function coordenadasParaPixels(lat, lng) {
     const svgWidth = 612.51611;
     const svgHeight = 639.04297;
 
-    // Normalizar coordenadas geográficas para pixels do SVG
+    // Obter o elemento SVG renderizado para calcular escala real
+    const mapaSvgElement = document.getElementById('mapa-brasil');
+    const mapaContainer = document.getElementById('mapa-container');
+
+    // Normalizar coordenadas geográficas para pixels do SVG (coordenadas originais)
     // X: longitude de oeste (-74) a leste (-34)
-    const x = ((lng - geoMinLng) / (geoMaxLng - geoMinLng)) * svgWidth;
+    const xNorm = ((lng - geoMinLng) / (geoMaxLng - geoMinLng)) * svgWidth;
 
     // Y: latitude de norte (5) a sul (-33), invertida pois SVG cresce para baixo
-    const y = ((geoMaxLat - lat) / (geoMaxLat - geoMinLat)) * svgHeight;
+    const yNorm = ((geoMaxLat - lat) / (geoMaxLat - geoMinLat)) * svgHeight;
 
-    // Debug para verificar conversões
-    if (window.DEBUG_COORDS) {
-        console.log(`📍 Convertendo: lat=${lat}, lng=${lng} → x=${x.toFixed(2)}, y=${y.toFixed(2)}`);
+    // Calcular escala e offset do SVG renderizado
+    let x = xNorm;
+    let y = yNorm;
+
+    if (mapaSvgElement && mapaContainer) {
+        const svgRect = mapaSvgElement.getBoundingClientRect();
+        const containerRect = mapaContainer.getBoundingClientRect();
+
+        // Calcular a escala do SVG (quanto ele foi redimensionado)
+        const scaleX = svgRect.width / svgWidth;
+        const scaleY = svgRect.height / svgHeight;
+
+        // Aplicar a escala às coordenadas
+        x = xNorm * scaleX;
+        y = yNorm * scaleY;
+
+        // Calcular o offset (onde o SVG começa dentro do container)
+        // Como o container usa justify-content: center e align-items: center,
+        // o SVG pode estar deslocado do canto superior esquerdo
+        const offsetX = svgRect.left - containerRect.left;
+        const offsetY = svgRect.top - containerRect.top;
+
+        // Adicionar o offset às coordenadas
+        x += offsetX;
+        y += offsetY;
+
+        // Debug para verificar conversões
+        if (window.DEBUG_COORDS) {
+            console.log(`📍 Coordenadas:`, {
+                lat, lng,
+                xNorm: xNorm.toFixed(2),
+                yNorm: yNorm.toFixed(2),
+                scaleX: scaleX.toFixed(3),
+                scaleY: scaleY.toFixed(3),
+                offsetX: offsetX.toFixed(2),
+                offsetY: offsetY.toFixed(2),
+                xFinal: x.toFixed(2),
+                yFinal: y.toFixed(2)
+            });
+        }
+    } else {
+        // Fallback: usar coordenadas normalizadas sem escala
+        if (window.DEBUG_COORDS) {
+            console.log(`⚠️ SVG ou container não encontrado, usando coordenadas normalizadas`);
+        }
     }
 
     return { x, y };
@@ -438,4 +484,81 @@ if (window.location.hostname === 'localhost' || window.location.hostname === '12
     */
 }
 
+// =========================
+// FUNÇÕES DE DEBUG
+// =========================
+
+/**
+ * Habilitar debug de coordenadas
+ * Use no console: enableDebugCoords()
+ */
+window.enableDebugCoords = function() {
+    window.DEBUG_COORDS = true;
+    console.log('🔧 Debug de coordenadas ATIVADO');
+    console.log('🔧 Teste São Paulo: testCoord(-23.5505, -46.6333)');
+};
+
+/**
+ * Testar conversão de coordenadas
+ * Exemplo: testCoord(-23.5505, -46.6333) // São Paulo
+ */
+window.testCoord = function(lat, lng, nome = '') {
+    console.log(`\n📍 Testando coordenadas${nome ? ' de ' + nome : ''}: lat=${lat}, lng=${lng}`);
+
+    const pos = coordenadasParaPixels(lat, lng);
+    console.log(`✅ Resultado: x=${pos.x.toFixed(2)}px, y=${pos.y.toFixed(2)}px`);
+
+    // Criar pinga de teste
+    const container = document.getElementById('animacoes-layer');
+    if (container) {
+        const pingaTeste = document.createElement('div');
+        pingaTeste.className = 'pinga';
+        pingaTeste.style.left = `${pos.x}px`;
+        pingaTeste.style.top = `${pos.y}px`;
+        pingaTeste.innerHTML = `
+            <div class="pinga-circle"></div>
+            <div class="pinga-ripple"></div>
+            <div class="tooltip-auto">
+                <div class="tooltip-auto-content">
+                    <strong>${nome || 'Teste'}</strong>
+                    <div>Lat: ${lat}</div>
+                    <div>Lng: ${lng}</div>
+                </div>
+            </div>
+        `;
+        container.appendChild(pingaTeste);
+        console.log('✅ Pinga de teste criada no mapa');
+
+        // Remover após 10 segundos
+        setTimeout(() => pingaTeste.remove(), 10000);
+    }
+
+    return pos;
+};
+
+/**
+ * Testar várias cidades brasileiras importantes
+ */
+window.testCidadesBrasil = function() {
+    console.log('\n🇧🇷 Testando coordenadas de cidades brasileiras...\n');
+
+    const cidades = [
+        { nome: 'São Paulo', lat: -23.5505, lng: -46.6333 },
+        { nome: 'Rio de Janeiro', lat: -22.9068, lng: -43.1729 },
+        { nome: 'Brasília', lat: -15.7939, lng: -47.8828 },
+        { nome: 'Salvador', lat: -12.9714, lng: -38.5014 },
+        { nome: 'Fortaleza', lat: -3.7172, lng: -38.5433 },
+        { nome: 'Manaus', lat: -3.1190, lng: -60.0217 },
+        { nome: 'Porto Alegre', lat: -30.0346, lng: -51.2177 },
+        { nome: 'Recife', lat: -8.0476, lng: -34.8770 }
+    ];
+
+    cidades.forEach(cidade => {
+        testCoord(cidade.lat, cidade.lng, cidade.nome);
+    });
+};
+
 console.log('✅ Script carregado');
+console.log('💡 Para debug de coordenadas, use: enableDebugCoords()');
+console.log('💡 Para testar São Paulo: testCoord(-23.5505, -46.6333, "São Paulo")');
+console.log('💡 Para testar várias cidades: testCidadesBrasil()');
