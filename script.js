@@ -9,10 +9,12 @@ const CONFIG = {
     API_BASE: 'https://dashboard-radio-worker.kaike-458.workers.dev',
     POLLING_INTERVAL: 5000, // 5 segundos
     DASHBOARD_REFRESH_INTERVAL: 60000, // 1 minuto (dados completos)
+    TEMPO_SIMULADO_DELAY_HORAS: 2, // Dashboard simula estar 2h atrás (falso ao vivo)
 };
 
 // Estado global
 let dashboardData = null;
+let dashboardDataOriginal = null; // Dados originais do worker (sem filtro)
 let animacoesAtivas = new Map();
 let mapaViewBox = { width: 1000, height: 1000 };
 let insercoesExibidasSet = new Set(); // Set de IDs de inserções que já apareceram
@@ -60,6 +62,43 @@ function inicializarMapa() {
 }
 
 // =========================
+// TEMPO SIMULADO (FALSO AO VIVO)
+// =========================
+
+/**
+ * Calcula o tempo simulado (2h atrás do tempo real)
+ * Usado para mostrar dados "ao vivo" simulando delay da API
+ */
+function calcularTempoSimulado() {
+    const agora = new Date();
+    const tempoSimulado = new Date(agora.getTime() - CONFIG.TEMPO_SIMULADO_DELAY_HORAS * 60 * 60 * 1000);
+
+    return {
+        data: tempoSimulado.toISOString().split('T')[0],
+        hora: tempoSimulado.getHours(),
+        minuto: tempoSimulado.getMinutes(),
+        horaStr: String(tempoSimulado.getHours()).padStart(2, '0'),
+        minutoStr: String(tempoSimulado.getMinutes()).padStart(2, '0'),
+        timestamp: tempoSimulado
+    };
+}
+
+/**
+ * Filtra inserções para mostrar apenas até o tempo simulado
+ */
+function filtrarInsercoesTempoSimulado(insercoes, tempoSimulado) {
+    return insercoes.filter(insercao => {
+        if (!insercao.hour) return false;
+
+        const [horaInsercao, minutoInsercao] = insercao.hour.split(':').map(Number);
+
+        // Incluir se hora < hora simulada OU (hora === hora simulada E minuto <= minuto simulado)
+        return (horaInsercao < tempoSimulado.hora) ||
+               (horaInsercao === tempoSimulado.hora && minutoInsercao <= tempoSimulado.minuto);
+    });
+}
+
+// =========================
 // API - BUSCAR DADOS
 // =========================
 
@@ -76,9 +115,42 @@ async function buscarDashboardCompleto() {
         const data = await response.json();
 
         if (data.success) {
-            dashboardData = data;
-            renderizarDashboard(data);
-            console.log('✅ Dashboard atualizado', data.debug);
+            // Salvar dados originais do worker
+            dashboardDataOriginal = data;
+
+            // Aplicar filtro de tempo simulado (FALSO AO VIVO)
+            const tempoSimulado = calcularTempoSimulado();
+            console.log(`⏰ Tempo Real: ${new Date().toLocaleTimeString('pt-BR')} | Simulado (dashboard): ${tempoSimulado.horaStr}:${tempoSimulado.minutoStr}`);
+
+            // Filtrar inserções para tempo simulado
+            const insercoesRecentes = filtrarInsercoesTempoSimulado(
+                data.insercoesRecentes || [],
+                tempoSimulado
+            );
+
+            console.log(`🔽 Filtro aplicado: ${data.insercoesRecentes?.length || 0} inserções → ${insercoesRecentes.length} até ${tempoSimulado.horaStr}:${tempoSimulado.minutoStr}`);
+
+            // Criar dados filtrados para o dashboard
+            const dadosFiltrados = {
+                ...data,
+                insercoesRecentes: insercoesRecentes,
+                metricas: {
+                    ...data.metricas,
+                    insercoesHoje: insercoesRecentes.length,
+                    ultimaAtualizacao: `${tempoSimulado.horaStr}:${tempoSimulado.minutoStr}`
+                },
+                tempoSimulado: `${tempoSimulado.horaStr}:${tempoSimulado.minutoStr}`,
+                debug: {
+                    ...data.debug,
+                    insercoesOriginais: data.insercoesRecentes?.length || 0,
+                    insercoesFiltradas: insercoesRecentes.length,
+                    tempoSimulado: `${tempoSimulado.horaStr}:${tempoSimulado.minutoStr}`
+                }
+            };
+
+            dashboardData = dadosFiltrados;
+            renderizarDashboard(dadosFiltrados);
+            console.log('✅ Dashboard atualizado (com filtro de tempo simulado)', dadosFiltrados.debug);
         } else {
             console.error('❌ Erro nos dados:', data.error);
             mostrarErro('Erro ao carregar dados do dashboard');
@@ -92,21 +164,84 @@ async function buscarDashboardCompleto() {
 
 async function buscarInsercoesRecentes() {
     try {
-        const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
+        // IMPORTANTE: Usar dados do worker (que já tem todas as inserções recentes)
+        // e filtrar no frontend com tempo simulado
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        if (!dashboardDataOriginal || !dashboardDataOriginal.insercoesRecentes || !dashboardDataOriginal.coordenadas) {
+            // Se não há dados ainda, não fazer nada
+            return;
         }
 
-        const data = await response.json();
+        // Calcular tempo simulado
+        const tempoSimulado = calcularTempoSimulado();
 
-        if (data.success && data.animacoes) {
-            atualizarAnimacoes(data.animacoes);
+        // Filtrar inserções para tempo simulado
+        const insercoesRecentes = filtrarInsercoesTempoSimulado(
+            dashboardDataOriginal.insercoesRecentes,
+            tempoSimulado
+        );
+
+        // Calcular quais inserções devem animar AGORA (no tempo simulado)
+        const animacoes = calcularAnimacoesAtivasLocal(
+            insercoesRecentes,
+            dashboardDataOriginal.coordenadas,
+            tempoSimulado.timestamp
+        );
+
+        if (animacoes.length > 0) {
+            atualizarAnimacoes(animacoes);
         }
 
     } catch (error) {
         console.error('⚠️ Erro ao buscar inserções recentes:', error);
     }
+}
+
+/**
+ * Calcula quais inserções devem estar animando no momento (versão local)
+ * Mesma lógica do worker, mas executada no frontend com tempo simulado
+ */
+function calcularAnimacoesAtivasLocal(insercoesRecentes, coordenadas, tempoAtual) {
+    const animacoes = [];
+    const coordenadasMap = new Map(coordenadas.map(c => [c.cidade, c]));
+    const DURACAO_ANIMACAO_SEGUNDOS = 30;
+
+    insercoesRecentes.forEach(insercao => {
+        if (!insercao.city || !insercao.hour) return;
+
+        const coords = coordenadasMap.get(insercao.city);
+        if (!coords) return;
+
+        const [horaInsercao, minutoInsercao, segundoInsercao = 0] = insercao.hour.split(':').map(Number);
+
+        // Criar momento da inserção no mesmo dia do tempo simulado
+        const momentoInsercao = new Date(tempoAtual);
+        momentoInsercao.setHours(horaInsercao, minutoInsercao, segundoInsercao, 0);
+
+        // Fim da animação: 30s após a inserção
+        const fimAnimacao = new Date(momentoInsercao.getTime() + DURACAO_ANIMACAO_SEGUNDOS * 1000);
+
+        // Verificar se a inserção deve estar animando no tempo simulado
+        if (tempoAtual >= momentoInsercao && tempoAtual <= fimAnimacao) {
+            animacoes.push({
+                id: `${insercao.city}-${insercao.hour}-${insercao.stationName}`,
+                lat: coords.lat,
+                lng: coords.lng,
+                startTime: momentoInsercao.toISOString(),
+                endTime: fimAnimacao.toISOString(),
+                dados: {
+                    emissora: insercao.stationName,
+                    cidade: insercao.city,
+                    uf: insercao.uf,
+                    cliente: insercao.client,
+                    horario: insercao.hour,
+                    campanha: insercao.campaign
+                }
+            });
+        }
+    });
+
+    return animacoes;
 }
 
 // =========================
@@ -218,7 +353,6 @@ function atualizarAnimacoes(novasAnimacoes) {
     const bounds = mapaContainer.getBoundingClientRect();
 
     // Remover animações expiradas
-    const agora = new Date();
     const idsAtivos = new Set(novasAnimacoes.map(a => a.id));
 
     animacoesAtivas.forEach((elemento, id) => {
@@ -228,22 +362,19 @@ function atualizarAnimacoes(novasAnimacoes) {
         }
     });
 
-    // Adicionar novas animações e rastrear inserções únicas
+    // Adicionar novas animações
     novasAnimacoes.forEach(animacao => {
-        // Adicionar ao set de inserções exibidas (acumula ao longo do dia)
-        insercoesExibidasSet.add(animacao.id);
-
         if (!animacoesAtivas.has(animacao.id)) {
             criarPinga(animacao, container, bounds);
         }
     });
 
-    // Atualizar contador de inserções exibidas (métricas em tempo real)
-    // Conta TODAS as inserções que já apareceram, não apenas as ativas
-    document.getElementById('metrica-insercoes').textContent = insercoesExibidasSet.size;
+    // IMPORTANTE: NÃO atualizar o contador aqui
+    // O contador já foi atualizado corretamente pelo filtro de tempo simulado
+    // em buscarDashboardCompleto()
 
     if (novasAnimacoes.length > 0) {
-        console.log(`✨ ${novasAnimacoes.length} animações ativas | Total exibido: ${insercoesExibidasSet.size}`);
+        console.log(`✨ ${novasAnimacoes.length} animações ativas no momento (tempo simulado)`);
     }
 }
 
