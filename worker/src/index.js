@@ -1,13 +1,11 @@
 /**
  * Dashboard Institucional - Monitoramento de Rádio
- * Cloudflare Worker com endpoints otimizados para TV
+ * Cloudflare Worker ATUALIZADO com busca forçada de dados frescos
  */
 
 const API_KEY = "9620cf74-856d-40c2-a091-248e4f322caa";
 const GEONAMES_USERNAME = "kaike";
-const DELAY_HORAS = 2; // Delay da API original (dados aparecem 2h depois)
 const DURACAO_ANIMACAO_SEGUNDOS = 30; // Duração da animação no mapa
-const TEMPO_SIMULADO_DELAY_HORAS = 2; // Dashboard simula estar 2h atrás do tempo real
 
 export default {
     async fetch(request, env, ctx) {
@@ -56,94 +54,23 @@ export default {
 
 // ===== ENDPOINT: Dashboard Completo =====
 async function handleDashboard(env, corsHeaders) {
-    console.log("📊 GET /api/dashboard");
+    console.log("📊 GET /api/dashboard - BUSCA FORÇADA DE DADOS FRESCOS");
 
-    // IMPORTANTE: Usar tempo simulado (2h atrás) para simular "ao vivo"
-    const tempoInfo = calcularTempoSimulado();
-    const { data: dataHoje, hora: horaAtual, minuto: minutoAtual, horaNum, minutoNum } = tempoInfo;
-
-    // Tempo real para logs
+    // Usar horário REAL de Brasília (sem simulação)
     const agora = new Date();
     const offsetBrasilia = -3 * 60;
     const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-    const horaRealBrasilia = String(agoraBrasilia.getHours()).padStart(2, '0');
-    const minutoRealBrasilia = String(agoraBrasilia.getMinutes()).padStart(2, '0');
 
-    const CACHE_KEY_DASHBOARD = `dashboard-completo-${dataHoje}`;
-    const CACHE_KEY_ULTIMA_ATUALIZACAO = `ultima-atualizacao-${dataHoje}`;
+    const dataHoje = agoraBrasilia.toISOString().split('T')[0];
+    const horaAtual = String(agoraBrasilia.getHours()).padStart(2, '0');
+    const minutoAtual = String(agoraBrasilia.getMinutes()).padStart(2, '0');
+    const horaNum = agoraBrasilia.getHours();
+    const minutoNum = agoraBrasilia.getMinutes();
 
-    console.log(`⏰ Horário Real: ${horaRealBrasilia}:${minutoRealBrasilia} | Simulado (dashboard): ${horaAtual}:${minutoAtual}`);
+    console.log(`⏰ HORÁRIO BRASÍLIA: ${dataHoje} ${horaAtual}:${minutoAtual}`);
 
-    // CACHE INTELIGENTE: Verificar se precisa atualizar
-    // Sistema verifica a cada 2-5 min se há dados novos da API
-    let precisaAtualizar = true;
-    let cacheStatus = 'MISS';
-
-    if (env.DASHBOARD_KV) {
-        try {
-            const ultimaAtualizacao = await env.DASHBOARD_KV.get(CACHE_KEY_ULTIMA_ATUALIZACAO);
-            if (ultimaAtualizacao) {
-                const dadosAtualizacao = JSON.parse(ultimaAtualizacao);
-                const minutosDesdeAtualizacao = calcularMinutosDecorridos(
-                    dadosAtualizacao.hora,
-                    dadosAtualizacao.minuto,
-                    horaAtual,
-                    minutoAtual
-                );
-
-                // Cache válido por 2-5 minutos
-                // Isso permite verificar constantemente se há dados novos sem sobrecarregar a API
-                if (minutosDesdeAtualizacao < 2) {
-                    precisaAtualizar = false;
-                    cacheStatus = 'HIT';
-                    console.log(`✅ Cache válido (${minutosDesdeAtualizacao} min desde última atualização)`);
-                } else {
-                    console.log(`🔄 Cache expirado (${minutosDesdeAtualizacao} min) - buscando dados novos`);
-                }
-            } else {
-                console.log(`🆕 Primeiro acesso - criando cache`);
-            }
-        } catch (error) {
-            console.log(`⚠️ Erro ao verificar cache: ${error.message}`);
-        }
-    }
-
-    // Se tem cache válido, retornar do cache
-    if (!precisaAtualizar && env.DASHBOARD_KV) {
-        try {
-            const cacheCompleto = await env.DASHBOARD_KV.get(CACHE_KEY_DASHBOARD);
-            if (cacheCompleto) {
-                const dados = JSON.parse(cacheCompleto);
-                console.log(`💾 Retornando do cache - economizando chamadas à API`);
-
-                // Recalcular métricas com tempo simulado atual (pode ter mudado)
-                const tempoInfoAtual = calcularTempoSimulado();
-
-                return new Response(JSON.stringify({
-                    ...dados,
-                    fromCache: true,
-                    timestamp: new Date().toISOString(),
-                    tempoSimulado: `${tempoInfoAtual.hora}:${tempoInfoAtual.minuto}`,
-                    metricas: {
-                        ...dados.metricas,
-                        ultimaAtualizacao: `${tempoInfoAtual.hora}:${tempoInfoAtual.minuto}`
-                    }
-                }), {
-                    headers: {
-                        ...corsHeaders,
-                        "Content-Type": "application/json",
-                        "X-Cache-Status": "HIT",
-                        "X-Tempo-Simulado": `${tempoInfoAtual.hora}:${tempoInfoAtual.minuto}`
-                    }
-                });
-            }
-        } catch (error) {
-            console.log(`⚠️ Erro ao ler cache: ${error.message}`);
-        }
-    }
-
-    // Buscar dados frescos
-    console.log(`🔄 Buscando dados frescos da API...`);
+    // SEMPRE buscar dados frescos (sem cache de 2 minutos)
+    console.log(`🔄 Buscando dados ATUALIZADOS da API...`);
 
     // 1. Buscar campanhas
     const todasCampanhas = await buscarTodasCampanhas();
@@ -155,10 +82,10 @@ async function handleDashboard(env, corsHeaders) {
 
     console.log(`🎯 ${campanhasAtivas.length} campanhas ativas`);
 
-    // 2. Buscar emissoras programadas
+    // 2. Buscar emissoras programadas (TODAS as campanhas, não só 15)
     const emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas);
 
-    // 3. Buscar inserções (usando tempo simulado)
+    // 3. Buscar inserções ATUALIZADAS (sem tempo simulado)
     const { insercoesRecentes, todasInsercoes } = await buscarInsercoes(
         campanhasAtivas,
         dataHoje,
@@ -166,7 +93,15 @@ async function handleDashboard(env, corsHeaders) {
         minutoNum
     );
 
-    console.log(`📻 ${insercoesRecentes.length} inserções recentes`);
+    console.log(`📻 ${insercoesRecentes.length} inserções recentes até ${horaAtual}:${minutoAtual}`);
+
+    // Mostrar as 5 mais recentes para debug
+    if (insercoesRecentes.length > 0) {
+        console.log(`🕐 5 INSERÇÕES MAIS RECENTES:`);
+        insercoesRecentes.slice(0, 5).forEach((ins, i) => {
+            console.log(`   ${i+1}. ${ins.hour} - ${ins.stationName} - ${ins.city}`);
+        });
+    }
 
     // 4. Processar coordenadas
     const coordenadas = await processarCoordenadas(
@@ -179,7 +114,9 @@ async function handleDashboard(env, corsHeaders) {
     const metricas = calcularMetricas(
         insercoesRecentes,
         campanhasAtivas,
-        emissorasProgramadas
+        emissorasProgramadas,
+        horaAtual,
+        minutoAtual
     );
 
     // 6. Preparar resposta
@@ -187,8 +124,6 @@ async function handleDashboard(env, corsHeaders) {
         success: true,
         timestamp: new Date().toISOString(),
         fromCache: false,
-        tempoSimulado: `${horaAtual}:${minutoAtual}`,
-        tempoReal: `${horaRealBrasilia}:${minutoRealBrasilia}`,
         metricas: metricas,
         coordenadas: coordenadas,
         insercoesRecentes: insercoesRecentes.slice(0, 100),
@@ -199,35 +134,21 @@ async function handleDashboard(env, corsHeaders) {
             totalInsercoes: todasInsercoes.length,
             insercoesRecentes: insercoesRecentes.length,
             horaProcessamento: `${horaAtual}:${minutoAtual}`,
-            tempoSimulado: `${horaAtual}:${minutoAtual}`,
-            tempoReal: `${horaRealBrasilia}:${minutoRealBrasilia}`,
-            delaySimulado: `${TEMPO_SIMULADO_DELAY_HORAS}h`
+            ultimaHoraEncontrada: insercoesRecentes[0]?.hour || 'Nenhuma'
         }
     };
 
-    // 7. Salvar cache
+    // 7. Salvar cache ATUALIZADO
     if (env.DASHBOARD_KV) {
         try {
-            await env.DASHBOARD_KV.put(
-                CACHE_KEY_DASHBOARD,
-                JSON.stringify(resultado),
-                { expirationTtl: 86400 } // 24h
-            );
-
-            await env.DASHBOARD_KV.put(
-                CACHE_KEY_ULTIMA_ATUALIZACAO,
-                JSON.stringify({ hora: horaAtual, minuto: minutoAtual }),
-                { expirationTtl: 86400 }
-            );
-
-            // Salvar também coordenadas e inserções para o endpoint /recentes
+            // Salvar inserções e coordenadas para o endpoint /recentes
             await env.DASHBOARD_KV.put(
                 `insercoes-${dataHoje}`,
-                JSON.stringify({ insercoesRecentes, coordenadas }),
+                JSON.stringify({ insercoesRecentes, coordenadas, timestamp: Date.now() }),
                 { expirationTtl: 86400 }
             );
 
-            console.log(`💾 Cache salvo`);
+            console.log(`💾 Cache ATUALIZADO salvo`);
         } catch (error) {
             console.log(`⚠️ Erro ao salvar cache: ${error.message}`);
         }
@@ -237,10 +158,8 @@ async function handleDashboard(env, corsHeaders) {
         headers: {
             ...corsHeaders,
             "Content-Type": "application/json",
-            "X-Cache-Status": "MISS",
-            "X-Tempo-Simulado": `${horaAtual}:${minutoAtual}`,
-            "X-Tempo-Real": `${horaRealBrasilia}:${minutoRealBrasilia}`,
-            "X-Cache-Info": "Dados atualizados da API"
+            "X-Cache-Status": "MISS-FORCED",
+            "Cache-Control": "no-cache"
         }
     });
 }
@@ -249,9 +168,11 @@ async function handleDashboard(env, corsHeaders) {
 async function handleInsercoesRecentes(env, corsHeaders) {
     console.log("🔥 GET /api/insercoes/recentes");
 
-    // IMPORTANTE: Usar tempo simulado (2h atrás)
-    const tempoInfo = calcularTempoSimulado();
-    const dataHoje = tempoInfo.data;
+    // Usar horário REAL de Brasília
+    const agora = new Date();
+    const offsetBrasilia = -3 * 60;
+    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
+    const dataHoje = agoraBrasilia.toISOString().split('T')[0];
 
     // Ler inserções do cache
     if (!env.DASHBOARD_KV) {
@@ -279,11 +200,11 @@ async function handleInsercoesRecentes(env, corsHeaders) {
 
         const { insercoesRecentes, coordenadas } = JSON.parse(cacheInsercoes);
 
-        // Calcular quais inserções devem estar animando AGORA (usando tempo simulado)
+        // Calcular quais inserções devem estar animando AGORA (usando tempo REAL)
         const animacoes = calcularAnimacoesAtivas(
             insercoesRecentes,
             coordenadas,
-            tempoInfo.tempoSimulado
+            agoraBrasilia
         );
 
         console.log(`✨ ${animacoes.length} animações ativas agora`);
@@ -317,28 +238,6 @@ async function handleInsercoesRecentes(env, corsHeaders) {
 }
 
 // ===== FUNÇÕES AUXILIARES =====
-
-/**
- * Calcula o tempo simulado (2h atrás do tempo real)
- * Isso permite que o dashboard mostre dados "ao vivo" mesmo com a API tendo delay de 2h
- */
-function calcularTempoSimulado() {
-    const agora = new Date();
-    const offsetBrasilia = -3 * 60; // UTC-3
-    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-
-    // Subtrair 2h para simular tempo atrasado
-    const tempoSimulado = new Date(agoraBrasilia.getTime() - TEMPO_SIMULADO_DELAY_HORAS * 60 * 60 * 1000);
-
-    return {
-        tempoSimulado: tempoSimulado,
-        data: tempoSimulado.toISOString().split('T')[0],
-        hora: String(tempoSimulado.getHours()).padStart(2, '0'),
-        minuto: String(tempoSimulado.getMinutes()).padStart(2, '0'),
-        horaNum: tempoSimulado.getHours(),
-        minutoNum: tempoSimulado.getMinutes()
-    };
-}
 
 async function buscarTodasCampanhas() {
     const todasCampanhas = [];
@@ -391,10 +290,13 @@ function filtrarCampanhasAtivas(campanhas, dataHoje) {
 }
 
 async function buscarEmissorasProgramadas(campanhasAtivas) {
-    const emissorasMap = new Map();
+    console.log(`🎯 Buscando emissoras programadas para ${campanhasAtivas.length} campanhas...`);
 
-    // Limitar a 15 campanhas para evitar timeout
-    for (const campanha of campanhasAtivas.slice(0, 15)) {
+    const emissorasMap = new Map();
+    let campanhasProcessadas = 0;
+
+    // Processar TODAS as campanhas ativas (não limitar a 15)
+    for (const campanha of campanhasAtivas) {
         try {
             const url = `https://api.audiency.io/advertiser-rest/campaigns/${campanha.id}/programmed-station-filter`;
 
@@ -404,6 +306,7 @@ async function buscarEmissorasProgramadas(campanhasAtivas) {
 
             if (response.ok) {
                 const data = await response.json();
+                // CORREÇÃO: A API retorna { "data": [array] } diretamente
                 const emissoras = Array.isArray(data.data) ? data.data : [];
 
                 emissoras.forEach(emissora => {
@@ -422,10 +325,13 @@ async function buscarEmissorasProgramadas(campanhasAtivas) {
                     const emissoraData = emissorasMap.get(emissoraKey);
                     emissoraData.campanhas.push({
                         id: campanha.id,
-                        name: campanha.name
+                        name: campanha.name,
+                        client: campanha.client?.name || ''
                     });
                     emissoraData.totalCampanhas++;
                 });
+
+                campanhasProcessadas++;
             }
 
             await new Promise(resolve => setTimeout(resolve, 150));
@@ -435,75 +341,111 @@ async function buscarEmissorasProgramadas(campanhasAtivas) {
         }
     }
 
-    return Array.from(emissorasMap.values());
+    const emissorasProgramadas = Array.from(emissorasMap.values());
+    console.log(`📻 ${campanhasProcessadas}/${campanhasAtivas.length} campanhas processadas`);
+    console.log(`🔄 ${emissorasProgramadas.length} emissoras únicas programadas`);
+
+    return emissorasProgramadas;
 }
 
 async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
+    console.log(`🔍 Buscando inserções ATUALIZADAS até ${horaAtual}:${minutoAtual}...`);
+
     const todasInsercoes = [];
     const insercoesRecentes = [];
 
     const horaAtualNum = parseInt(horaAtual);
     const minutoAtualNum = parseInt(minutoAtual);
 
-    // Processar em batches
-    for (const campanha of campanhas.slice(0, 15)) {
-        try {
-            const url = `https://api.audiency.io/advertiser-rest/reports/common/advertiser-execution?page=1&limit=500&countryId=1&campaignId=${campanha.id}&stationDate=${dataHoje}&stationDate=${dataHoje}`;
+    console.log(`🕐 Filtrando inserções até ${horaAtualNum}:${minutoAtualNum}`);
 
-            const response = await fetch(url, {
-                headers: { "accept": "application/json", "apiKey": API_KEY }
-            });
+    // Processar em batches (3 por vez para evitar timeout)
+    const batches = [];
+    const batchSize = 3;
 
-            if (response.ok) {
-                const data = await response.json();
-                const items = data?.data?.lines || [];
+    for (let i = 0; i < campanhas.length; i += batchSize) {
+        batches.push(campanhas.slice(i, i + batchSize));
+    }
 
-                items.forEach(item => {
-                    if (!item.hour) return;
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
 
-                    const [horaItem, minutoItem] = item.hour.split(':').map(Number);
-                    const cidade = item.city ? item.city.split(' / ')[0] : '';
-                    const uf = item.city ? item.city.split(' / ')[1] : '';
+        for (const campanha of batch) {
+            try {
+                const url = `https://api.audiency.io/advertiser-rest/reports/common/advertiser-execution?page=1&limit=500&countryId=1&campaignId=${campanha.id}&stationDate=${dataHoje}&stationDate=${dataHoje}`;
 
-                    const insercao = {
-                        stationName: item.stationName || '',
-                        client: item.client || campanha.client?.name || '',
-                        hour: item.hour || '',
-                        city: cidade,
-                        uf: uf,
-                        date: item.date || '',
-                        campaign: campanha.name || '',
-                        campaignId: campanha.id,
-                        timestamp: `${item.date} ${item.hour}`,
-                        horaNumerica: horaItem,
-                        minutoNumerico: minutoItem
-                    };
-
-                    todasInsercoes.push(insercao);
-
-                    // Inserções até o minuto atual
-                    const isRecente = (
-                        (horaItem === horaAtualNum && minutoItem <= minutoAtualNum) ||
-                        (horaItem < horaAtualNum)
-                    );
-
-                    if (isRecente) {
-                        insercoesRecentes.push(insercao);
-                    }
+                const response = await fetch(url, {
+                    headers: { "accept": "application/json", "apiKey": API_KEY }
                 });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const items = data?.data?.lines || [];
+
+                    let recentesCount = 0;
+
+                    items.forEach(item => {
+                        if (!item.hour) return;
+
+                        const [horaItem, minutoItem] = item.hour.split(':').map(Number);
+                        const cidade = item.city ? item.city.split(' / ')[0] : '';
+                        const uf = item.city ? item.city.split(' / ')[1] : '';
+
+                        const insercao = {
+                            stationName: item.stationName || '',
+                            client: item.client || campanha.client?.name || '',
+                            hour: item.hour || '',
+                            city: cidade,
+                            uf: uf,
+                            date: item.date || '',
+                            campaign: campanha.name || '',
+                            campaignId: campanha.id,
+                            timestamp: `${item.date} ${item.hour}`,
+                            horaNumerica: horaItem,
+                            minutoNumerico: minutoItem
+                        };
+
+                        todasInsercoes.push(insercao);
+
+                        // FILTRO ATUALIZADO: Inserções até o minuto atual
+                        const isRecente = (
+                            (horaItem === horaAtualNum && minutoItem <= minutoAtualNum) ||
+                            (horaItem < horaAtualNum)
+                        );
+
+                        if (isRecente) {
+                            insercoesRecentes.push(insercao);
+                            recentesCount++;
+                        }
+                    });
+
+                    if (items.length > 0) {
+                        console.log(`   📊 ${campanha.name}: ${items.length} total, ${recentesCount} recentes`);
+                    }
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 200));
+
+            } catch (error) {
+                console.log(`❌ Erro campanha ${campanha.id}: ${error.message}`);
             }
+        }
 
-            await new Promise(resolve => setTimeout(resolve, 200));
-
-        } catch (error) {
-            console.log(`❌ Erro campanha ${campanha.id}: ${error.message}`);
+        if (batchIndex < batches.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
         }
     }
 
     // Ordenar por mais recente
     insercoesRecentes.sort((a, b) => {
-        const timeA = new Date(`${a.date} ${a.hour}`);
-        const timeB = new Date(`${b.date} ${b.hour}`);
+        const timeA = new Date(`${dataHoje} ${a.hour}`);
+        const timeB = new Date(`${dataHoje} ${b.hour}`);
+        return timeB - timeA;
+    });
+
+    todasInsercoes.sort((a, b) => {
+        const timeA = new Date(`${dataHoje} ${a.hour}`);
+        const timeB = new Date(`${dataHoje} ${b.hour}`);
         return timeB - timeA;
     });
 
@@ -583,7 +525,9 @@ async function processarCoordenadas(insercoes, kvNamespace, dataHoje) {
     return Array.from(coordenadasMap.values());
 }
 
-function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
+function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, horaAtual, minutoAtual) {
+    console.log(`📊 Calculando métricas...`);
+
     const cidadesAtivas = new Set(insercoes.map(i => i.city).filter(Boolean)).size;
 
     // Top emissoras por campanhas
@@ -595,10 +539,12 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
             campanhas: e.totalCampanhas
         }));
 
-    // Top cidades por emissoras
+    // Top cidades por emissoras (praças)
     const pracasMap = new Map();
 
     emissorasProgramadas.forEach(emissora => {
+        // Extrair cidade da string do nome da emissora
+        // Formato: "Nome da Rádio (Frequência) - UF | Cidade"
         const cidadeMatch = emissora.name.match(/-\s*([A-Z]{2})\s*\|\s*(.+)$/);
 
         if (cidadeMatch) {
@@ -610,11 +556,14 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
                 pracasMap.set(pracaKey, {
                     cidade: cidade,
                     uf: uf,
-                    emissoras: 0
+                    emissoras: 0,
+                    totalCampanhas: 0
                 });
             }
 
-            pracasMap.get(pracaKey).emissoras++;
+            const pracaData = pracasMap.get(pracaKey);
+            pracaData.emissoras++;
+            pracaData.totalCampanhas += emissora.totalCampanhas;
         }
     });
 
@@ -626,8 +575,8 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
             emissoras: praca.emissoras
         }));
 
-    // USAR TEMPO SIMULADO para mostrar a "hora atual" no dashboard
-    const tempoInfo = calcularTempoSimulado();
+    console.log(`✅ Métricas: ${campanhasAtivas.length} campanhas, ${emissorasProgramadas.length} emissoras, ${cidadesAtivas} cidades`);
+    console.log(`📍 Top praças: ${topCidades.length} praças encontradas`);
 
     return {
         campanhasAtivas: campanhasAtivas.length,
@@ -636,11 +585,11 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas) {
         cidadesAtivas: cidadesAtivas,
         topEmissoras: topEmissoras,
         topCidades: topCidades,
-        ultimaAtualizacao: `${tempoInfo.hora}:${tempoInfo.minuto}`
+        ultimaAtualizacao: `${horaAtual}:${minutoAtual}`
     };
 }
 
-function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoSimulado) {
+function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
     const animacoes = [];
     const coordenadasMap = new Map(coordenadas.map(c => [c.cidade, c]));
 
@@ -650,23 +599,22 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoSimulado) 
         const coords = coordenadasMap.get(insercao.city);
         if (!coords) return;
 
-        // LÓGICA CORRIGIDA PARA TEMPO SIMULADO:
-        // 1. Inserção aconteceu em horário X (ex: 13:30) - registrado na API
-        // 2. No tempo simulado, se são "13:30 simulado", inserções de 13:30 devem animar agora
-        // 3. Animação dura 30s após o horário da inserção
+        // LÓGICA: Animação dura 30s após o horário da inserção
+        // Se agora são 10:35:15 e inserção foi às 10:35:00, deve animar (passou 15s)
+        // Se agora são 10:35:45 e inserção foi às 10:35:00, deve animar (passou 45s, mas ainda dentro dos 30s após 10:35:59)
 
         const [horaInsercao, minutoInsercao, segundoInsercao = 0] = insercao.hour.split(':').map(Number);
 
-        // Criar momento da inserção no mesmo dia do tempo simulado
-        const momentoInsercao = new Date(tempoSimulado);
+        // Criar momento da inserção no mesmo dia do tempo atual
+        const momentoInsercao = new Date(tempoAtual);
         momentoInsercao.setHours(horaInsercao, minutoInsercao, segundoInsercao, 0);
 
         // Fim da animação: 30s após a inserção
         const fimAnimacao = new Date(momentoInsercao.getTime() + DURACAO_ANIMACAO_SEGUNDOS * 1000);
 
-        // Verificar se a inserção deve estar animando no tempo simulado atual
-        // Anima se: tempo simulado >= hora da inserção E tempo simulado <= hora + 30s
-        if (tempoSimulado >= momentoInsercao && tempoSimulado <= fimAnimacao) {
+        // Verificar se a inserção deve estar animando no tempo atual
+        // Anima se: tempo atual >= hora da inserção E tempo atual <= hora + 30s
+        if (tempoAtual >= momentoInsercao && tempoAtual <= fimAnimacao) {
             animacoes.push({
                 id: `${insercao.city}-${insercao.hour}-${insercao.stationName}`,
                 lat: coords.lat,
@@ -686,12 +634,6 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoSimulado) 
     });
 
     return animacoes;
-}
-
-function calcularMinutosDecorridos(horaInicial, minutoInicial, horaFinal, minutoFinal) {
-    const inicio = parseInt(horaInicial) * 60 + parseInt(minutoInicial);
-    const fim = parseInt(horaFinal) * 60 + parseInt(minutoFinal);
-    return fim - inicio;
 }
 
 function criarRespostaVazia(hora, minuto, corsHeaders) {
