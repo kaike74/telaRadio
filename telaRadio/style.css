@@ -331,7 +331,8 @@ svg {
     flex-direction: column;
     min-height: 0;
     margin-right: 25px;
-    margin: -25px 0 20px 0;
+    margin-top: -25px;
+    
 }
 
 .grafico-section h3 {
