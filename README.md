@@ -73,23 +73,22 @@ npm run deploy
 ## 📁 Estrutura do Projeto
 
 ```
-dashboard-radio/
+telaRadio/
 ├── README.md                    # Este arquivo
-├── wrangler.toml               # Configuração Cloudflare Worker
+├── index.html                   # Interface principal
+├── script.js                    # Lógica de animações e polling
+├── style.css                    # Estilos otimizados para TV
+├── mapa-brasil.svg              # Mapa do Brasil
+├── wrangler.toml                # Configuração Cloudflare Worker
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml          # Deploy automático
+│       └── deploy.yml           # Deploy automático
 ├── worker/
 │   ├── src/
-│   │   └── index.js           # Worker principal
+│   │   └── index.js            # Worker principal
 │   └── package.json
-├── frontend/
-│   ├── index.html             # Interface principal
-│   ├── style.css              # Estilos otimizados para TV
-│   ├── script.js              # Lógica de animações e polling
-│   └── mapa-brasil.svg        # Mapa do Brasil
 └── docs/
-    └── SETUP.md               # Guia detalhado de setup
+    └── SETUP.md                # Guia detalhado de setup
 ```
 
 ## 🔧 Configuração

@@ -2,6 +2,7 @@ name = "dashboard-radio-worker"
 main = "worker/src/index.js"
 compatibility_date = "2024-11-01"
 workers_dev = true
+account_id = "458e6d616cddf6660731e71235fe4c45"
 
 # KV Namespace
 kv_namespaces = [
