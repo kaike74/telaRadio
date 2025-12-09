@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#001B4D">
+    <title>Dashboard de Monitoramento - Rádio</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Video player - tela cheia simples */
+        #video-player {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9999;
+            background: #000;
+            display: none;
+        }
+
+        #video-player.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Video element - simples e direto -->
+    <video id="video-player" muted playsinline></video>
+
+    <div class="dashboard-container">
+        <!-- Coluna Esquerda (60%) -->
+        <div class="left-column">
+            <!-- Maapa do Brasil (60% altura) -->
+            <div class="mapa-section">
+                <div class="mapa-content-wrapper">
+                    <!-- Mapa (75% da largura) -->
+                    <div id="mapa-container">
+                        <img id="mapa-brasil" src="mapa-brasil.svg" alt="Mapa do Brasil" />
+                        <!-- Container de animações -->
+                        <div id="animacoes-layer"></div>
+                    </div>
+
+                    <!-- Lista de Inserções (25% da largura) -->
+                    <div class="insercoes-lateral">
+                        <h4>Últimas Inserções</h4>
+                        <div id="lista-insercoes-lateral" class="lista-lateral">
+                            <div class="loading">Carregando...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna Direita (40%) -->
+        <div class="right-column">
+            <!-- Métricas (3 blocos) -->
+            <div class="metricas-section">
+                <div class="metrica-card">
+                    <div class="metrica-valor" id="metrica-campanhas">--</div>
+                    <div class="metrica-label">Campanhas Ativas</div>
+                </div>
+                <div class="metrica-card">
+                    <div class="metrica-valor" id="metrica-radios">--</div>
+                    <div class="metrica-label">Rádios Ativas</div>
+                </div>
+                <div class="metrica-card">
+                    <div class="metrica-valor" id="metrica-insercoes">--</div>
+                    <div class="metrica-label">Inserções Hoje</div>
+                </div>
+            </div>
+
+            <!-- Gráfico: Top Emissoras -->
+            <div class="grafico-section">
+                <h3>Emissoras com Maior Número de Campanhas Ativas</h3>
+                <div id="grafico-emissoras" class="grafico-container">
+                    <div class="loading">Carregando...</div>
+                </div>
+            </div>
+
+            <!-- Gráfico: Top 3 Cidades em Grade -->
+            <div class="grafico-section">
+                <h3>Cidades com Maior Número de Emissoras Ativas</h3>
+                <div id="grafico-cidades" class="grafico-cidades-grade">
+                    <div class="loading">Carregando...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip flutuante -->
+    <div id="tooltip" class="tooltip hidden">
+        <div class="tooltip-content"></div>
+    </div>
+
+    <!-- News Ticker / Rodapé de Notícias -->
+    <div id="news-ticker" class="news-ticker">
+        <div class="ticker-header">
+            <span class="ticker-label">Hoje no Radar</span>
+        </div>
+        <div class="ticker-content">
+            <div class="ticker-scroll">
+                <div id="ticker-items" class="ticker-items">
+                    <!-- Items populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== CONFIGURAÇÃO SIMPLES =====
+        const API_BASE = 'https://dashboard-radio-worker.kaike-458.workers.dev';
+        const DASHBOARD_TIME = 3 * 60; // 3 minutos
+        const VIDEO_TIME = 3 * 60;     // 3 minutos
+        
+        let videoPlayer = document.getElementById('video-player');
+        let videos = [];
+        let currentVideoIndex = 0;
+        let mode = 'dashboard'; // dashboard ou video
+        let countdown = DASHBOARD_TIME;
+        let rotationTimer = null;
+        let videoPlaylist = [];
+        
+        // ===== CARREGAR LISTA DE VÍDEOS =====
+        fetch(API_BASE + '/api/videos')
+            .then(r => r.json())
+            .then(data => {
+                if (data.sucesso && data.videos) {
+                    videos = data.videos;
+                    console.log('✅ ' + videos.length + ' videos carregados');
+                }
+            })
+            .catch(err => console.log('❌ Erro ao carregar vídeos: ' + err.message));
+        
+        // ===== INICIAR ROTAÇÃO =====
+        function iniciar() {
+            console.log('🚀 Iniciando rotação');
+            modo('dashboard');
+            rotationTimer = setInterval(tick, 1000);
+        }
+        
+        // ===== TICK A CADA SEGUNDO =====
+        function tick() {
+            countdown--;
+            
+            if (countdown <= 0) {
+                if (mode === 'dashboard') {
+                    modo('video');
+                } else {
+                    modo('dashboard');
+                }
+            }
+        }
+        
+        // ===== TROCAR MODO =====
+        function modo(m) {
+            mode = m;
+            countdown = (m === 'dashboard') ? DASHBOARD_TIME : VIDEO_TIME;
+            
+            if (m === 'dashboard') {
+                console.log('📊 Dashboard');
+                videoPlayer.classList.remove('active');
+                videoPlayer.pause();
+            } else {
+                console.log('🎬 Vídeos');
+                videoPlayer.classList.add('active');
+                if (videos.length > 0) {
+                    // Embaralhar vídeos
+                    videoPlaylist = videos.sort(() => Math.random() - 0.5).slice(0, 9);
+                    currentVideoIndex = 0;
+                    proximoVideo();
+                }
+            }
+        }
+        
+        // ===== PRÓXIMO VÍDEO =====
+        function proximoVideo() {
+            if (mode !== 'video') return;
+            
+            if (currentVideoIndex >= videoPlaylist.length) {
+                console.log('✅ Fim da fila - voltando');
+                modo('dashboard');
+                return;
+            }
+            
+            let video = videoPlaylist[currentVideoIndex];
+            let url = API_BASE + '/api/video-stream/' + video.id;
+            
+            console.log('▶️ ' + (currentVideoIndex + 1) + '/9 - ' + video.nome);
+            
+            // Trocar URL e reproduzir
+            videoPlayer.src = url;
+            videoPlayer.play().catch(err => {
+                console.log('⚠️ Play falhou: ' + err.message);
+                pularVideo();
+            });
+            
+            currentVideoIndex++;
+        }
+        
+        // ===== PULAR PARA PRÓXIMO VÍDEO =====
+        function pularVideo() {
+            if (mode === 'video') {
+                setTimeout(proximoVideo, 2000);
+            }
+        }
+        
+        // ===== QUANDO VÍDEO TERMINA =====
+        videoPlayer.onended = function() {
+            console.log('✅ Vídeo terminou');
+            setTimeout(proximoVideo, 2000);
+        };
+        
+        // ===== INICIAR QUANDO PRONTO =====
+        document.addEventListener('DOMContentLoaded', iniciar);
+    </script>
+</body>
+
+</html>< ! - -   T e s t e   d e   a u t o - d e p l o y   1 1 / 2 8 / 2 0 2 5   1 4 : 4 2 : 0 3   - - > 
+ 
+ 
