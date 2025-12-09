@@ -330,8 +330,7 @@ svg {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    margin-right: 25px;
-    margin: -25px 0 20px 0;
+    margin: -25px 25px 20px 0;
     
 }
 
