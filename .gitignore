@@ -37,3 +37,8 @@ logs/
 # Secrets (nunca commitar)
 secrets.json
 credentials.json
+
+# Pastas com commits antigos (ignorar)
+telaRadio/
+alteracaoproposta/
+
