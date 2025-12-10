@@ -275,7 +275,7 @@ async function handleDashboard(env, corsHeaders) {
 
 // ===== ENDPOINT: Inserções Recentes (para animações) =====
 async function handleInsercoesRecentes(env, corsHeaders) {
-    console.log("🔥 GET /api/insercoes/recentes - BUSCAR DADOS FRESCOS");
+    console.log("🔥 GET /api/insercoes/recentes - SEMPRE BUSCAR DADOS FRESCOS");
 
     // Usar horário REAL de Brasília
     const agora = new Date();
@@ -290,42 +290,21 @@ async function handleInsercoesRecentes(env, corsHeaders) {
     console.log(`🕐 TEMPO BRASÍLIA: ${dataHoje} ${horaFormatada}`);
 
     try {
-        // 1️⃣ TENTAR CACHE PRIMEIRO (mais rápido)
-        let insercoesRecentes = [];
-        let fromCache = false;
+        // ⭐ SEMPRE BUSCAR DIRETO DA API (não usar cache para inserções recentes)
+        // Cache pode estar desatualizado por até 60 segundos
+        console.log(`📡 Buscando dados FRESCOS da API Audiency...`);
         
-        if (env.DASHBOARD_KV) {
-            try {
-                const cacheDashboard = await env.DASHBOARD_KV.get(`dashboard-completo-${dataHoje}`);
-                if (cacheDashboard) {
-                    const parsedCache = JSON.parse(cacheDashboard);
-                    if (parsedCache.insercoesRecentes && Array.isArray(parsedCache.insercoesRecentes)) {
-                        insercoesRecentes = parsedCache.insercoesRecentes;
-                        fromCache = true;
-                        console.log(`✅ Dados carregados do CACHE`);
-                    }
-                }
-            } catch (cacheError) {
-                console.warn(`⚠️ Erro ao ler cache: ${cacheError.message}`);
-            }
-        }
+        // Buscar campanhas
+        const todasCampanhas = await buscarTodasCampanhas();
+        const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
         
-        // 2️⃣ SE CACHE VAZIO, BUSCAR DIRETO DA API AUDIENCY
-        if (insercoesRecentes.length === 0) {
-            console.log(`📡 Cache vazio! Buscando dados FRESCOS da API Audiency...`);
-            
-            // Buscar campanhas
-            const todasCampanhas = await buscarTodasCampanhas();
-            const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-            
-            console.log(`📊 ${campanhasAtivas.length} campanhas ativas encontradas`);
-            
-            // Buscar inserções
-            const resultado = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
-            insercoesRecentes = resultado.insercoesRecentes || [];
-            
-            console.log(`🆕 ${insercoesRecentes.length} inserções FRESCAS obtidas da API`);
-        }
+        console.log(`📊 ${campanhasAtivas.length} campanhas ativas encontradas`);
+        
+        // Buscar inserções
+        const resultado = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
+        let insercoesRecentes = resultado.insercoesRecentes || [];
+        
+        console.log(`🆕 ${insercoesRecentes.length} inserções FRESCAS obtidas da API`);
         
         // Garantir que é array
         if (!Array.isArray(insercoesRecentes)) {
@@ -340,10 +319,9 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             timestamp: new Date().toISOString(),
             horaBrasilia: `${horaAtual}:${minutoAtual}`,
             insercoesRecentes: insercoesRecentes.slice(0, 100),
-            fromCache: fromCache,
             debug: {
                 totalInsercoes: insercoesRecentes.length,
-                origem: fromCache ? 'cache-dashboard' : 'api-audiency-fresca'
+                origem: 'api-audiency-fresca'
             }
         };
         
