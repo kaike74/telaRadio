@@ -1285,27 +1285,15 @@ function calcularTempoRelativo(hora) {
 function converterHorarioVisual(horaOriginal) {
     if (!horaOriginal) return '--';
     
-    // Parse da hora (HH:MM:SS ou HH:MM)
-    const [horas, minutos] = horaOriginal.split(':').map(Number);
+    // ⭐ CORRIGIDO: Retornar o horário da INSERÇÃO, não o horário atual
+    // Formato de entrada: "HH:MM" ou "HH:MM:SS"
+    // Formato de saída: "HH:MM"
     
-    // Criar momento da inserção no mesmo dia
-    const agora = new Date();
-    const momentoInsercao = new Date();
-    momentoInsercao.setHours(horas, minutos, 0, 0);
+    const partes = horaOriginal.split(':');
+    const horas = String(partes[0]).padStart(2, '0');
+    const minutos = String(partes[1]).padStart(2, '0');
     
-    // Calcular diferença em minutos
-    const diferencaMinutos = Math.floor((agora - momentoInsercao) / (1000 * 60));
-    
-    // Se foi há menos de 2 horas, mostrar "agora" ou horário ajustado
-    if (diferencaMinutos <= 120) {
-        // Mostrar o horário "atual" (como se tivesse acontecido agora)
-        const horaAtual = agora.getHours();
-        const minutoAtual = agora.getMinutes();
-        return `${String(horaAtual).padStart(2, '0')}:${String(minutoAtual).padStart(2, '0')}`;
-    }
-    
-    // Senão, mostrar a hora original
-    return horaOriginal;
+    return `${horas}:${minutos}`;
 }
 
 function mostrarErro(mensagem) {

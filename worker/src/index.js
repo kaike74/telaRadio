@@ -662,7 +662,12 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                     items.forEach((item, itemIndex) => {
                         if (!item.hour) return;
 
-                        const [horaItem, minutoItem] = item.hour.split(':').map(Number);
+                        // Parse horário: "08:56" ou "08:56:19"
+                        const partesHora = item.hour.split(':');
+                        const horaItem = parseInt(partesHora[0]);
+                        const minutoItem = parseInt(partesHora[1]);
+                        const segundoItem = partesHora.length > 2 ? parseInt(partesHora[2]) : 0;
+                        
                         const cidade = item.city ? item.city.split(' / ')[0] : '';
                         const uf = item.city ? item.city.split(' / ')[1] : '';
                         
@@ -680,9 +685,10 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                             date: item.date || '',
                             campaign: campanha.name || '',
                             campaignId: campanha.id,
-                            timestamp: `${item.date} ${item.hour}`,
+                            timestamp: `${item.date} ${String(horaItem).padStart(2, '0')}:${String(minutoItem).padStart(2, '0')}:${String(segundoItem).padStart(2, '0')}`,
                             horaNumerica: horaItem,
-                            minutoNumerico: minutoItem
+                            minutoNumerico: minutoItem,
+                            segundoNumerico: segundoItem
                         };
 
                         // ✅ Adicionar TODAS as inserções do dia
