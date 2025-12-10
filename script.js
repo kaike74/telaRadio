@@ -1719,35 +1719,14 @@ function atualizarTicker(dados) {
 
     const items = [];
     
-    // 🔥 NOVA LÓGICA: Mostrar TODAS as últimas inserções executadas
+    // 🔥 LÓGICA: Mostrar TODAS as últimas inserções executadas
     // Cada inserção aparece com timestamp e desaparece em 120 segundos
-    // ⭐ NOVO: Criar pinga APENAS para inserções novas (não vistas antes)
     if (dados.insercoesRecentes && Array.isArray(dados.insercoesRecentes) && dados.insercoesRecentes.length > 0) {
         console.log(`%c📺 ${dados.insercoesRecentes.length} inserções recentes para exibir no ticker`, 'color: #51cf66; font-weight: bold;');
-        console.log(`   🔍 Rastreamento: ${insercoesPreviasIds.size} inserções memorizadas da atualização anterior`);
-        
-        // ⭐ RASTREAMENTO: Identificar quais são novas
-        const novasInsercoes = [];
-        const insercoesPaginaAtualIds = new Set();
         
         dados.insercoesRecentes.slice(0, 15).forEach((insercao, idx) => {
             try {
                 const itemId = `ticker-${insercao.city || 'unknown'}-${insercao.hour || 'unknown'}-${idx}`;
-                
-                // ⭐ ID ÚNICO ESTÁVEL: Baseado em estação + cidade (não muda se hora mudar)
-                // Removemos 'hour' porque muda a cada minuto
-                const insercaoId = `${insercao.stationName}-${insercao.city}-${insercao.campaign}`;
-                insercoesPaginaAtualIds.add(insercaoId);
-                
-                // Verificar se é uma inserção NOVA (não vista antes)
-                const isNova = !insercoesPreviasIds.has(insercaoId);
-                
-                if (isNova) {
-                    novasInsercoes.push({ insercao, itemId, insercaoId });
-                    console.log(`   ✨ NOVA: ${insercao.stationName} - ${insercao.city} (criará pinga)`);
-                } else {
-                    console.log(`   ℹ️ Existente: ${insercao.stationName} - ${insercao.city} (sem novo pinga)`);
-                }
                 
                 // Formatar hora de forma mais legível
                 const hora = insercao.hour || 'N/A';
@@ -1757,8 +1736,8 @@ function atualizarTicker(dados) {
                 
                 const estacao = insercao.stationName ? insercao.stationName.split('(')[0].trim() : 'N/A';
                 const cidade = insercao.city || 'N/A';
-                const cliente = insercao.client || insercao.campaign || 'N/A'; // ⭐ NOVO: Usar cliente da inserção
-                // ⭐ NOVO: Limpar nome da campanha removendo prefixos numéricos
+                const cliente = insercao.client || insercao.campaign || 'N/A'; // Usar cliente da inserção
+                // ⭐ Limpar nome da campanha removendo prefixos numéricos
                 const campanha = limparNomeCampanha(insercao.campaign) || 'N/A';
                 
                 console.log(`   [${idx + 1}] ${hora} - ${estacao} (${cidade}) - Campanha: ${campanha}`);
@@ -1803,7 +1782,7 @@ function atualizarTicker(dados) {
                     id: itemId,
                     icon: true,
                     text: mensagemTicker,
-                    textColor: '#E03D99', // ⭐ NOVO: Texto em rosa (emissora e cliente ficarão rosa)
+                    textColor: '#E03D99', // ⭐ Texto em rosa (emissora e cliente ficarão rosa)
                     highlight: `${cidade}`,
                     color: '#E03D99'
                 });
@@ -1844,11 +1823,6 @@ function atualizarTicker(dados) {
                     console.log(`   🏆 Informativo MILESTONE adicionado: ${mensagemMaiuscula}`);
                 }
                 
-                // ⭐ MODIFICADO: Criar pinga APENAS se for inserção nova
-                if (isNova) {
-                    criarPingaDoTicker(insercao, itemId);
-                }
-                
                 // ⏰ Configurar auto-remove em 120 segundos
                 configurarAutoRemoveTicker(itemId);
             } catch (e) {
@@ -1866,17 +1840,6 @@ function atualizarTicker(dados) {
     if (items.length === 0) {
         console.log('📝 Usando mensagem padrão (nenhuma inserção para exibir)');
         items.push('Monitorando inserções em tempo real...');
-    }
-
-    // ⭐ ATUALIZAR RASTREAMENTO: Guardar IDs das inserções atuais para próxima atualização
-    if (dados.insercoesRecentes && Array.isArray(dados.insercoesRecentes)) {
-        insercoesPreviasIds = new Set(
-            dados.insercoesRecentes
-                .slice(0, 15)
-                .map(ins => `${ins.stationName}-${ins.city}-${ins.campaign}`)  // ID estável (sem hour)
-        );
-        console.log(`   📊 Rastreamento atualizado: ${insercoesPreviasIds.size} inserções memorizadas`);
-        console.log(`      IDs: ${Array.from(insercoesPreviasIds).slice(0, 3).join(', ')}...`);
     }
 
     console.log(`✨ Chamando renderizarTickerDinamico com ${items.length} items`);
