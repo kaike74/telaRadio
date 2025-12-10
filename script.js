@@ -367,7 +367,12 @@ async function buscarInsercoesRecentes() {
         console.log(`📦 Resposta recebida: success=${data.success}, inserções=${insercoes.length}`);
         
         if (!data.success) {
-            console.warn(`⚠️ API retornou erro: ${data.error}`);
+            console.error(`\n${'='.repeat(100)}`);
+            console.error(`❌ API RETORNOU ERRO`);
+            console.error(`${'='.repeat(100)}`);
+            console.error(`Erro: ${data.error}`);
+            console.error(`Timestamp: ${data.timestamp}`);
+            console.error(`${'='.repeat(100)}\n`);
             // Renderizar vazio
             renderizarListaInsercoes([]);
             atualizarTicker({ insercoesRecentes: [] });
@@ -375,7 +380,18 @@ async function buscarInsercoesRecentes() {
         }
 
         if (insercoes.length === 0) {
-            console.warn(`⚠️ Nenhuma inserção retornada`);
+            console.error(`\n${'='.repeat(100)}`);
+            console.error(`❌ NENHUMA INSERÇÃO RECEBIDA DO BACKEND`);
+            console.error(`${'='.repeat(100)}`);
+            console.error(`A API retornou sucesso mas com array vazio`);
+            console.error(`Timestamp: ${data.timestamp}`);
+            console.error(`Hora Brasília: ${data.horaBrasilia}`);
+            console.error(`Debug: ${JSON.stringify(data.debug)}`);
+            console.error(`\nProximos passos:`);
+            console.error(`  1. Verificar logs do backend (Cloudflare Worker)`);
+            console.error(`  2. Verificar se há campanhas ativas`);
+            console.error(`  3. Verificar se a API Audiency tem dados`);
+            console.error(`${'='.repeat(100)}\n`);
             renderizarListaInsercoes([]);
             atualizarTicker({ insercoesRecentes: [] });
             return;

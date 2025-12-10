@@ -317,6 +317,28 @@ async function handleInsercoesRecentes(env, corsHeaders) {
         
         console.log(`📦 Total de inserções para retornar: ${insercoesRecentes.length}`);
         
+        // ⚠️ LOG CRÍTICO: Quando não há dados
+        if (insercoesRecentes.length === 0) {
+            console.error(`\n${'='.repeat(100)}`);
+            console.error(`❌ NENHUMA INSERÇÃO ENCONTRADA NA BUSCA`);
+            console.error(`${'='.repeat(100)}`);
+            console.error(`Contexto:`);
+            console.error(`  - Data: ${dataHoje}`);
+            console.error(`  - Hora atual (Brasília): ${horaFormatada}`);
+            console.error(`  - Campanhas ativas: ${campanhasAtivas.length}`);
+            console.error(`  - Total campanhas: ${todasCampanhas.length}`);
+            console.error(`\nPossíveis causas:`);
+            if (campanhasAtivas.length === 0) {
+                console.error(`  1. ❌ NENHUMA CAMPANHA ATIVA - Verifique datas de início/fim`);
+            }
+            if (todasCampanhas.length === 0) {
+                console.error(`  2. ❌ NENHUMA CAMPANHA RETORNADA DA API - Verifique API Key e conectividade`);
+            }
+            console.error(`  3. ❌ API Audiency sem dados para este horário/data`);
+            console.error(`  4. ❌ Filtro de 1 hora está removendo todas as inserções`);
+            console.error(`${'='.repeat(100)}\n`);
+        }
+        
         // Construir resposta
         const response = {
             success: true,
@@ -717,6 +739,8 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
 
                     if (items.length > 0) {
                         console.log(`   📊 ${campanha.name}: ${items.length} total, ${recentesCount} recentes`);
+                    } else {
+                        console.log(`   ⚠️ ${campanha.name}: NENHUM ITEM RETORNADO DA API`);
                     }
                 }
 
@@ -776,6 +800,34 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     };
     
     console.log(`✨ Logs salvos globalmente - ${exibidas.length} exibidas, ${filtradas.length} filtradas (${logInsercoesDetalhado.length} total)`);
+
+    // ⚠️ LOG CRÍTICO: Se não há dados nenhum
+    if (todasInsercoes.length === 0) {
+        console.error(`\n${'='.repeat(120)}`);
+        console.error(`❌ CRÍTICO: NENHUMA INSERÇÃO ENCONTRADA EM NENHUMA CAMPANHA`);
+        console.error(`${'='.repeat(120)}`);
+        console.error(`Análise:`);
+        console.error(`  - Campanhas processadas: ${campanhas.length}`);
+        console.error(`  - Total de insertions obtidas da API: 0`);
+        console.error(`  - Inserções com cidade: 0`);
+        console.error(`  - Inserções dentro do filtro de 1h: 0`);
+        console.error(`\nPossíveis causas:`);
+        console.error(`  1. API Audiency está retornando VAZIO`);
+        console.error(`  2. Nenhuma campanha tem inserções para hoje`);
+        console.error(`  3. Todas as inserções estão fora do horário (> 1h de atraso)`);
+        console.error(`${'='.repeat(120)}\n`);
+    } else if (insercoesRecentes.length === 0 && todasInsercoes.length > 0) {
+        console.warn(`\n${'='.repeat(120)}`);
+        console.warn(`⚠️ AVISO: Inserções encontradas mas NENHUMA dentro do filtro de 1 hora`);
+        console.warn(`${'='.repeat(120)}`);
+        console.warn(`Análise:`);
+        console.warn(`  - Total de inserções no dia: ${todasInsercoes.length}`);
+        console.warn(`  - Inserções com cidade: ${todasInsercoes.filter(i => i.city).length}`);
+        console.warn(`  - Inserções dentro do filtro: 0`);
+        console.warn(`\nTodas as ${todasInsercoes.length} inserções estão FILTRADAS (> 1 hora atrás)`);
+        console.warn(`Motivo: Filtro de 1 hora aplica-se a dados já atrasados pela API`);
+        console.warn(`${'='.repeat(120)}\n`);
+    }
 
     // Ordenar por mais recente
     insercoesRecentes.sort((a, b) => {
