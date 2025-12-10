@@ -368,6 +368,7 @@ async function buscarInsercoesRecentes() {
         console.log(`📦 BUSCAR INSERÇÕES RECENTES - Resposta recebida`);
         console.log(`   Success: ${data.success}`);
         console.log(`   Total inserções: ${insercoes.length}`);
+        console.log(`   Total ANTES do filtro: ${data.debug?.totalAntesFiltro || 'N/A'}`);
         console.log(`   Timestamp: ${data.timestamp}`);
         if (insercoes.length > 0) {
             console.log(`   Primeiras 3 inserções:`);

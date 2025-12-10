@@ -304,11 +304,15 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             console.warn(`⚠️ NENHUMA CAMPANHA ATIVA! Retornando array vazio`);
         }
         
-        // Buscar inserções
-        const resultado = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
-        let insercoesRecentes = resultado.insercoesRecentes || [];
+        // Construir resposta
+        const resultado_busca = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
+        let insercoesRecentes = resultado_busca.insercoesRecentes || [];
+        let todasInsercoesBuscadas = resultado_busca.todasInsercoes || [];
         
         console.log(`🆕 ${insercoesRecentes.length} inserções FRESCAS obtidas da API`);
+        console.log(`📊 Total de inserções ANTES do filtro: ${todasInsercoesBuscadas.length}`);
+        console.log(`📊 Inserções APÓS filtro de 1 hora: ${insercoesRecentes.length}`);
+        console.log(`📊 Inserções REJEITADAS: ${todasInsercoesBuscadas.length - insercoesRecentes.length}`);
         
         // Garantir que é array
         if (!Array.isArray(insercoesRecentes)) {
@@ -327,6 +331,8 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             console.error(`  - Hora atual (Brasília): ${horaFormatada}`);
             console.error(`  - Campanhas ativas: ${campanhasAtivas.length}`);
             console.error(`  - Total campanhas: ${todasCampanhas.length}`);
+            console.error(`  - Total inserções antes do filtro: ${todasInsercoesBuscadas.length}`);
+            console.error(`  - Total inserções após filtro: ${insercoesRecentes.length}`);
             console.error(`\nPossíveis causas:`);
             if (campanhasAtivas.length === 0) {
                 console.error(`  1. ❌ NENHUMA CAMPANHA ATIVA - Verifique datas de início/fim`);
@@ -334,8 +340,12 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             if (todasCampanhas.length === 0) {
                 console.error(`  2. ❌ NENHUMA CAMPANHA RETORNADA DA API - Verifique API Key e conectividade`);
             }
-            console.error(`  3. ❌ API Audiency sem dados para este horário/data`);
-            console.error(`  4. ❌ Filtro de 1 hora está removendo todas as inserções`);
+            if (todasInsercoesBuscadas.length === 0) {
+                console.error(`  3. ❌ API Audiency sem dados para este horário/data`);
+            }
+            if (todasInsercoesBuscadas.length > 0 && insercoesRecentes.length === 0) {
+                console.error(`  4. ❌ Filtro de 1 hora está removendo TODAS as ${todasInsercoesBuscadas.length} inserções`);
+            }
             console.error(`${'='.repeat(100)}\n`);
         }
         
@@ -347,6 +357,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             insercoesRecentes: insercoesRecentes.slice(0, 100),
             debug: {
                 totalInsercoes: insercoesRecentes.length,
+                totalAntesFiltro: todasInsercoesBuscadas.length,
                 origem: 'api-audiency-fresca'
             }
         };
@@ -726,6 +737,11 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                         if (isRecente) {
                             insercoesRecentes.push(insercao);
                             recentesCount++;
+                        } else {
+                            // 🔍 DEBUG: Log quando item é filtrado
+                            if (itemIndex < 1) {
+                                console.log(`   DEBUG FILTRO: ${insercao.hour} (hora=${horaItem}, minuto=${minutoItem}) vs filtro até ${String(horaFiltroNum).padStart(2, '0')}:${String(minutoFiltroNum).padStart(2, '0')} - FILTRADO`);
+                            }
                         }
 
                         // 📋 REGISTRAR TUDO NO LOG DETALHADO
