@@ -612,7 +612,7 @@ function exibirLogUltimasInsercoes() {
                         
                         console.log(`%c${'═'.repeat(120)}`, 'color: #51cf66; font-weight: bold; font-size: 13px;');
                         const agoraLog1 = new Date();
-                        const proximaAtualizacao1 = new Date(agoraLog1.getTime() + 5 * 60 * 1000);
+                        const proximaAtualizacao1 = new Date(agoraLog1.getTime() + 1 * 60 * 1000);
                         console.log(`%c⏰ Atualizado em: ${agoraLog1.toLocaleTimeString('pt-BR')} | Próxima atualização: ${proximaAtualizacao1.toLocaleTimeString('pt-BR')}`, 'color: #FFD700; font-style: italic;');
                     }
                 })
@@ -620,7 +620,7 @@ function exibirLogUltimasInsercoes() {
         } catch (error) {
             console.error('❌ Erro em exibirLogUltimasInsercoes:', error);
         }
-    }, 5 * 60 * 1000); // 5 minutos
+    }, 1 * 60 * 1000); // 1 minuto
 }
 
 /**
@@ -707,7 +707,7 @@ function exibirLogProximasInsercoes() {
                         
                         console.log(`%c${'═'.repeat(160)}`, 'color: #FF6B6B; font-weight: bold; font-size: 13px;');
                         const agoraLog2 = new Date();
-                        const proximaAtualizacao2 = new Date(agoraLog2.getTime() + 5 * 60 * 1000);
+                        const proximaAtualizacao2 = new Date(agoraLog2.getTime() + 1 * 60 * 1000);
                         console.log(`%c⏰ Atualizado em: ${agoraLog2.toLocaleTimeString('pt-BR')} | Próxima atualização: ${proximaAtualizacao2.toLocaleTimeString('pt-BR')}`, 'color: #FFD700; font-style: italic;');
                     }
                 })
@@ -715,7 +715,7 @@ function exibirLogProximasInsercoes() {
         } catch (error) {
             console.error('❌ Erro em exibirLogProximasInsercoes:', error);
         }
-    }, 5 * 60 * 1000); // 5 minutos
+    }, 1 * 60 * 1000); // 1 minuto
 }
 
 /**
