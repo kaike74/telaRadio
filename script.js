@@ -127,10 +127,10 @@ const CONFIG = {
 let dashboardData = null;
 let animacoesAtivas = new Map();
 let mapaViewBox = { width: 1000, height: 1000 };
-// 🔧 BUG FIX #3: Remover acúmulo local - sempre usar valor do backend
 
-// ⭐ NOVO: Rastrear inserções já vistas para criar pingas apenas das novas
-let insercoesPreviasIds = new Set(); // Set com IDs das inserções da atualização anterior
+// ⭐ NOVO: Timestamp da última inserção processada
+// Pings são criados APENAS para inserções com timestamp > ultimaInsercaoTimestamp
+let ultimaInsercaoTimestamp = null; // Formato: "2025-12-10 18:33:22"
 
 // 🔧 DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
 let metricasAnteriores = {
@@ -153,8 +153,7 @@ window.DEBUG = {
         console.log(`📊 Status do Dashboard:`);
         console.log(`   Dispositivo: ${DEVICE_TYPE}`);
         console.log(`   Animações ativas: ${animacoesAtivas.size}`);
-        console.log(`   Inserções rastreadas: ${insercoesPreviasIds.size}`);
-        console.log(`   IDs memorizados:`, Array.from(insercoesPreviasIds).slice(0, 5));
+        console.log(`   Última inserção processada: ${ultimaInsercaoTimestamp || 'Nenhuma'}`);
         console.log(`   Dashboard data: ${dashboardData ? 'Carregado' : 'Não carregado'}`);
         if (dashboardData) {
             console.log(`   Inserções recentes: ${dashboardData.insercoesRecentes?.length || 0}`);
@@ -360,33 +359,38 @@ async function buscarInsercoesRecentes() {
 
         if (data.success) {
             if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                // ⭐ SINCRONIZAÇÃO: Renderizar lista E criar pings APENAS das inserções NOVAS
+                // ⭐ RENDERIZAR LISTA
                 renderizarListaInsercoes(data.insercoesRecentes);
                 
-                // 🆕 Detectar inserções novas (que não estavam na atualização anterior)
-                const insercoesPing = [];
-                data.insercoesRecentes.forEach((insercao, index) => {
-                    // Criar ID único baseado em data + hora + emissora + campanha
-                    // (timestamp muda, por isso usar dados mais estáveis)
-                    const idInsercao = `${insercao.date}|${insercao.hour}|${insercao.stationName}|${insercao.campaignId}`;
-                    
-                    // Se é uma inserção nova (não vista antes)
-                    if (!insercoesPreviasIds.has(idInsercao)) {
-                        insercoesPreviasIds.add(idInsercao);
-                        insercoesPing.push({ insercao, index });
+                // 📍 CRIAR PINGS APENAS PARA INSERÇÕES NOVAS
+                // Nova inserção = timestamp > ultimaInsercaoTimestamp
+                const insercoesPing = data.insercoesRecentes.filter(insercao => {
+                    // Se é a primeira vez, considerar todas como novas
+                    if (ultimaInsercaoTimestamp === null) {
+                        return false; // Na primeira carga, não criar pings
                     }
+                    
+                    // Comparar timestamps no formato "YYYY-MM-DD HH:MM:SS"
+                    return insercao.timestamp > ultimaInsercaoTimestamp;
                 });
                 
-                // 🔴 Criar pings APENAS das inserções novas
+                // 🔴 Criar pings para inserções novas
                 if (insercoesPing.length > 0) {
-                    LoggerOtimizado.grupo('📍 PINGS NOVOS', {
-                        'Inserções novas': insercoesPing.length,
-                        'Ação': 'Criar pings apenas para novas'
+                    LoggerOtimizado.grupo('📍 PINGS CRIADOS', {
+                        'Novas inserções': insercoesPing.length,
+                        'Últimas removidas': data.insercoesRecentes.length - insercoesPing.length
                     });
                     
-                    insercoesPing.forEach(({ insercao, index }) => {
+                    insercoesPing.forEach((insercao, index) => {
                         buscarCoordenadaECriarPinga(insercao, `pinga-${Date.now()}-${index}`);
                     });
+                }
+                
+                // ✅ ATUALIZAR: Última inserção processada
+                // A primeira inserção (index 0) é sempre a mais recente
+                if (data.insercoesRecentes.length > 0) {
+                    ultimaInsercaoTimestamp = data.insercoesRecentes[0].timestamp;
+                    LoggerOtimizado.log(`⏱️ Última inserção: ${ultimaInsercaoTimestamp}`, 'timestamp-update');
                 }
             }
 
