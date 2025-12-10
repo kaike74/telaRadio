@@ -682,6 +682,12 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                         // ✅ Adicionar TODAS as inserções do dia
                         todasInsercoes.push(insercao);
 
+                        // 🚫 FILTRO DE CITY: Ignorar inserções sem localização
+                        // Só mostramos inserções que têm cidade preenchida
+                        if (!cidade || cidade.trim() === '') {
+                            return; // Pular inserções sem cidade
+                        }
+
                         // 🕐 FILTRO COM DELAY DE 2 HORAS: Últimas inserções recentes
                         // Mostra inserções que ocorreram até (agora - 2 horas)
                         const isRecente = (
