@@ -954,8 +954,6 @@ function renderizarListaInsercoes(insercoes) {
         container.innerHTML = '<div class="loading">Nenhuma inserção encontrada</div>';
         return;
     }
-
-    console.log(`✅ Renderizando lista com ${insercoes.length} inserções (mostrando primeiras 10)`);
     
     // Validar e filtrar inserções com dados completos
     const insercoesFiltradas = insercoes.filter((ins, idx) => {
@@ -991,8 +989,6 @@ function renderizarListaInsercoes(insercoes) {
     
     // ⭐ REMOVIDO: Símbolo "+" removido
     container.innerHTML = listaHTML;
-    
-    console.log(`✅ Lista de inserções renderizada com ${Math.min(10, insercoesFiltradas.length)} itens`);
 }
 
 /**
@@ -1886,9 +1882,6 @@ function atualizarTicker(dados) {
         return;
     }
 
-    console.log(`%c📺 atualizarTicker INICIADO`, 'color: #E03D99; font-weight: bold;');
-    console.log('   Dados recebidos:', dados);
-
     const items = [];
     
     // 🔥 LÓGICA: Mostrar TODAS as últimas inserções executadas
@@ -2010,7 +2003,6 @@ function atualizarTicker(dados) {
         items.push('Monitorando inserções em tempo real...');
     }
 
-    console.log(`✨ Chamando renderizarTickerDinamico com ${items.length} items`);
     renderizarTickerDinamico(items);
 }
 
@@ -2054,10 +2046,6 @@ function renderizarTickerDinamico(novoItems) {
         return;
     }
 
-    console.log(`%c🎨 renderizarTickerDinamico INICIADO`, 'color: #5A5FFF; font-weight: bold;');
-    console.log(`   ${novoItems.length} items para renderizar`);
-    console.log('   Container encontrado:', tickerItemsContainer);
-
     // Adicionar novos items apenas se não existem
     novoItems.forEach((item, index) => {
         const itemId = item.id || `ticker-${Date.now()}-${index}`;
@@ -2077,7 +2065,6 @@ function renderizarTickerDinamico(novoItems) {
                 <span class="ticker-item-icon"></span>
                 <span class="ticker-item-text">${escapeHtml(item)}</span>
             `;
-            console.log(`   ✅ Item string criado: "${item}"`);
         } else if (typeof item === 'object') {
             const icon = item.icon ? `<span class="ticker-item-icon" style="background-color: ${item.color || '#E03D99'};"></span>` : '';
             const text = item.text || '';
@@ -2087,14 +2074,10 @@ function renderizarTickerDinamico(novoItems) {
                 ${icon}
                 <span class="ticker-item-text">${escapeHtml(text)} ${highlight}</span>
             `;
-            console.log(`   ✅ Item objeto criado: "${text}" + "${highlight}"`);
         }
         
         tickerItemsContainer.insertBefore(tickerItem, tickerItemsContainer.firstChild);
-        console.log(`   ➕ Adicionado ao DOM: ${itemId}`);
     });
-
-    console.log(`✨ renderizarTickerDinamico COMPLETO - ${novoItems.length} items processados`);
 }
 
 /**
