@@ -132,6 +132,10 @@ let mapaViewBox = { width: 1000, height: 1000 };
 // Pings são criados APENAS para inserções com timestamp > ultimaInsercaoTimestamp
 let ultimaInsercaoTimestamp = null; // Formato: "2025-12-10 18:33:22"
 
+// ⭐ NOVO: Flag para rastrear se já temos dados renderizados
+// Evita limpar a tela quando a API está lenta
+let temDadosRenderizados = false;
+
 // 🔧 DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
 let metricasAnteriores = {
     campanhasAtivas: null,
@@ -399,11 +403,16 @@ async function buscarInsercoesRecentes() {
             console.error(`Timestamp: ${data.timestamp}`);
             console.error(`Hora Brasília: ${data.horaBrasilia}`);
             console.error(`Debug: ${JSON.stringify(data.debug)}`);
-            console.error(`\nProximos passos:`);
-            console.error(`  1. Verificar logs do backend (Cloudflare Worker)`);
-            console.error(`  2. Verificar se há campanhas ativas`);
-            console.error(`  3. Verificar se a API Audiency tem dados`);
             console.error(`${'='.repeat(100)}\n`);
+            
+            // ⭐ NÃO LIMPAR DADOS se já temos algo renderizado
+            // A API pode estar retornando cache vazio temporariamente
+            if (temDadosRenderizados) {
+                console.log(`ℹ️ Mantendo dados anteriores renderizados`);
+                return;
+            }
+            
+            // Se não temos dados renderizados ainda, mostrar vazio
             renderizarListaInsercoes([]);
             atualizarTicker({ insercoesRecentes: [] });
             return;
@@ -411,6 +420,9 @@ async function buscarInsercoesRecentes() {
 
         // ⭐ RENDERIZAR LISTA
         renderizarListaInsercoes(insercoes);
+        
+        // ⭐ Marcar que temos dados renderizados
+        temDadosRenderizados = true;
         
         // 📍 CRIAR PINGS APENAS PARA INSERÇÕES NOVAS
         const insercoesPing = [];

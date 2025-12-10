@@ -275,7 +275,7 @@ async function handleDashboard(env, corsHeaders) {
 
 // ===== ENDPOINT: Inserções Recentes (para animações) =====
 async function handleInsercoesRecentes(env, corsHeaders) {
-    console.log("🔥 GET /api/insercoes/recentes - SEMPRE BUSCAR DADOS FRESCOS");
+    console.log("🔥 GET /api/insercoes/recentes");
 
     // Usar horário REAL de Brasília
     const agora = new Date();
@@ -290,8 +290,30 @@ async function handleInsercoesRecentes(env, corsHeaders) {
     console.log(`🕐 TEMPO BRASÍLIA: ${dataHoje} ${horaFormatada}`);
 
     try {
-        // ⭐ SEMPRE BUSCAR DIRETO DA API (não usar cache para inserções recentes)
-        // Cache pode estar desatualizado por até 60 segundos
+        // ⭐ ESTRATÉGIA: Usar cache com TTL curto (30 segundos)
+        // Se o cache é válido, retorna imediatamente
+        // Enquanto isso, busca novos dados em background
+        const cacheKey = `insercoes-recentes-${dataHoje}`;
+        const cacheTTL = 30; // segundos
+        
+        // Tentar ler do cache
+        let cachedData = null;
+        try {
+            const cached = await env.CACHE.get(cacheKey);
+            if (cached) {
+                cachedData = JSON.parse(cached);
+                const cacheAge = (Date.now() - cachedData.cacheTime) / 1000;
+                if (cacheAge < cacheTTL) {
+                    console.log(`📦 Retornando dados do CACHE (${cacheAge.toFixed(1)}s de idade)`);
+                    return new Response(JSON.stringify(cachedData.data), {
+                        headers: { ...corsHeaders, "Content-Type": "application/json" }
+                    });
+                }
+            }
+        } catch (cacheErr) {
+            console.log(`ℹ️ Cache não disponível: ${cacheErr.message}`);
+        }
+        
         console.log(`📡 Buscando dados FRESCOS da API Audiency...`);
         
         // Buscar campanhas
@@ -358,8 +380,10 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             debug: {
                 totalInsercoes: insercoesRecentes.length,
                 totalAntesFiltro: todasInsercoesBuscadas.length,
-                origem: 'api-audiency-fresca'
-            }
+                origem: 'api-audiency-fresca',
+                cached: false
+            },
+            cacheTime: Date.now()
         };
         
         if (insercoesRecentes.length > 0) {
@@ -369,11 +393,19 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             });
         }
         
+        // 💾 Salvar no cache para próximas requisições
+        try {
+            await env.CACHE.put(cacheKey, JSON.stringify({ data: response, cacheTime: Date.now() }));
+            console.log(`💾 Dados salvos em cache por 30 segundos`);
+        } catch (cacheErr) {
+            console.log(`⚠️ Não conseguiu salvar cache: ${cacheErr.message}`);
+        }
+        
         return new Response(JSON.stringify(response), {
             headers: {
                 ...corsHeaders,
                 "Content-Type": "application/json",
-                "Cache-Control": "no-cache"
+                "Cache-Control": "public, max-age=30"
             }
         });
 
