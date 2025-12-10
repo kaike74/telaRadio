@@ -363,34 +363,55 @@ async function buscarInsercoesRecentes() {
                 renderizarListaInsercoes(data.insercoesRecentes);
                 
                 // 📍 CRIAR PINGS APENAS PARA INSERÇÕES NOVAS
-                // Nova inserção = timestamp > ultimaInsercaoTimestamp
-                const insercoesPing = data.insercoesRecentes.filter(insercao => {
-                    // Se é a primeira vez, considerar todas como novas
-                    if (ultimaInsercaoTimestamp === null) {
-                        return false; // Na primeira carga, não criar pings
+                const insercoesPing = [];
+                
+                data.insercoesRecentes.forEach(insercao => {
+                    // Validar se tem timestamp válido
+                    if (!insercao.timestamp) {
+                        console.warn(`⚠️ Inserção sem timestamp:`, insercao);
+                        return;
                     }
                     
-                    // Comparar timestamps no formato "YYYY-MM-DD HH:MM:SS"
-                    return insercao.timestamp > ultimaInsercaoTimestamp;
+                    // Se é a primeira carga (ultimaInsercaoTimestamp === null)
+                    if (ultimaInsercaoTimestamp === null) {
+                        // Não criar pings na primeira carga
+                        return;
+                    }
+                    
+                    // COMPARAR: timestamp > ultimaInsercaoTimestamp
+                    // Formato esperado: "2025-12-10 10:25:30"
+                    if (insercao.timestamp > ultimaInsercaoTimestamp) {
+                        insercoesPing.push(insercao);
+                        console.log(`✅ PING NOVO: ${insercao.timestamp} > ${ultimaInsercaoTimestamp}`);
+                    } else {
+                        console.log(`⏭️ Inserção antiga: ${insercao.timestamp} ≤ ${ultimaInsercaoTimestamp}`);
+                    }
                 });
                 
                 // 🔴 Criar pings para inserções novas
                 if (insercoesPing.length > 0) {
                     LoggerOtimizado.grupo('📍 PINGS CRIADOS', {
                         'Novas inserções': insercoesPing.length,
-                        'Últimas removidas': data.insercoesRecentes.length - insercoesPing.length
+                        'Total recebidas': data.insercoesRecentes.length
                     });
                     
                     insercoesPing.forEach((insercao, index) => {
                         buscarCoordenadaECriarPinga(insercao, `pinga-${Date.now()}-${index}`);
                     });
+                } else {
+                    console.log(`ℹ️ Nenhuma inserção nova (todas mais antigas que ${ultimaInsercaoTimestamp})`);
                 }
                 
                 // ✅ ATUALIZAR: Última inserção processada
                 // A primeira inserção (index 0) é sempre a mais recente
-                if (data.insercoesRecentes.length > 0) {
-                    ultimaInsercaoTimestamp = data.insercoesRecentes[0].timestamp;
-                    LoggerOtimizado.log(`⏱️ Última inserção: ${ultimaInsercaoTimestamp}`, 'timestamp-update');
+                const primeiraInsercao = data.insercoesRecentes[0];
+                const novoTimestamp = primeiraInsercao.timestamp;
+                
+                if (ultimaInsercaoTimestamp !== novoTimestamp) {
+                    console.log(`⏱️ Atualizando timestamp: ${ultimaInsercaoTimestamp} → ${novoTimestamp}`);
+                    ultimaInsercaoTimestamp = novoTimestamp;
+                } else {
+                    console.log(`⏱️ Timestamp inalterado: ${ultimaInsercaoTimestamp}`);
                 }
             }
 
