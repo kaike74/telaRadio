@@ -364,7 +364,18 @@ async function buscarInsercoesRecentes() {
         // ✅ Sempre tentar renderizar - mesmo que vazio
         const insercoes = data.insercoesRecentes || [];
         
-        console.log(`📦 Resposta recebida: success=${data.success}, inserções=${insercoes.length}`);
+        console.log(`\n${'='.repeat(100)}`);
+        console.log(`📦 BUSCAR INSERÇÕES RECENTES - Resposta recebida`);
+        console.log(`   Success: ${data.success}`);
+        console.log(`   Total inserções: ${insercoes.length}`);
+        console.log(`   Timestamp: ${data.timestamp}`);
+        if (insercoes.length > 0) {
+            console.log(`   Primeiras 3 inserções:`);
+            insercoes.slice(0, 3).forEach((ins, i) => {
+                console.log(`      [${i+1}] ${ins.hour || 'N/A'} - ${ins.stationName || 'N/A'} - ${ins.city || 'N/A'}`);
+            });
+        }
+        console.log(`${'='.repeat(100)}\n`);
         
         if (!data.success) {
             console.error(`\n${'='.repeat(100)}`);
@@ -972,6 +983,8 @@ function renderizarListaInsercoes(insercoes) {
         return;
     }
 
+    console.log(`🎯 renderizarListaInsercoes chamado com ${insercoes ? insercoes.length : 'N/A'} inserções`);
+
     if (!Array.isArray(insercoes)) {
         console.error('❌ ERRO: insercoes não é um array!', typeof insercoes, insercoes);
         container.innerHTML = '<div class="loading">Erro ao carregar inserções</div>';
@@ -993,6 +1006,8 @@ function renderizarListaInsercoes(insercoes) {
         return valido;
     });
 
+    console.log(`   ✅ Após filtro de validação: ${insercoesFiltradas.length} inserções válidas`);
+
     if (insercoesFiltradas.length === 0) {
         console.error('❌ Nenhuma inserção com dados completos!');
         container.innerHTML = '<div class="loading">Nenhuma inserção válida</div>';
@@ -1000,7 +1015,9 @@ function renderizarListaInsercoes(insercoes) {
     }
 
     // Mostrar apenas 10 inserções (cabe melhor no layout lateral)
-    const listaHTML = insercoesFiltradas.slice(0, 10).map((insercao, index) => {
+    const top10 = insercoesFiltradas.slice(0, 10);
+    console.log(`   📍 Top 10 selecionadas (de ${insercoesFiltradas.length})`);
+    const listaHTML = top10.map((insercao, index) => {
         // ⭐ HORÁRIO REMOVIDO: Não mostrar hora na tabela lateral
         // A conversão de horário agora é apenas no ticker
         
@@ -1018,6 +1035,7 @@ function renderizarListaInsercoes(insercoes) {
     
     // ⭐ REMOVIDO: Símbolo "+" removido
     container.innerHTML = listaHTML;
+    console.log(`   ✨ Lista renderizada com ${top10.length} inserções`);
 }
 
 /**
