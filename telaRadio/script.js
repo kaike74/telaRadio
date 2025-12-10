@@ -1704,9 +1704,6 @@ function atualizarTicker(dados) {
     // Cada inserção aparece com timestamp e desaparece em 120 segundos
     // ⭐ NOVO: Criar pinga APENAS para inserções novas (não vistas antes)
     if (dados.insercoesRecentes && Array.isArray(dados.insercoesRecentes) && dados.insercoesRecentes.length > 0) {
-        console.log(`%c📺 ${dados.insercoesRecentes.length} inserções recentes para exibir no ticker`, 'color: #51cf66; font-weight: bold;');
-        console.log(`   🔍 Rastreamento: ${insercoesPreviasIds.size} inserções memorizadas da atualização anterior`);
-        
         // ⭐ RASTREAMENTO: Identificar quais são novas
         const novasInsercoes = [];
         const insercoesPaginaAtualIds = new Set();
@@ -1725,9 +1722,6 @@ function atualizarTicker(dados) {
                 
                 if (isNova) {
                     novasInsercoes.push({ insercao, itemId, insercaoId });
-                    console.log(`   ✨ NOVA: ${insercao.stationName} - ${insercao.city} (criará pinga)`);
-                } else {
-                    console.log(`   ℹ️ Existente: ${insercao.stationName} - ${insercao.city} (sem novo pinga)`);
                 }
                 
                 // Formatar hora de forma mais legível
@@ -1742,8 +1736,6 @@ function atualizarTicker(dados) {
                 // ⭐ NOVO: Limpar nome da campanha removendo prefixos numéricos
                 const campanha = limparNomeCampanha(insercao.campaign) || 'N/A';
                 
-                console.log(`   [${idx + 1}] ${hora} - ${estacao} (${cidade}) - Campanha: ${campanha}`);
-                
                 // ⭐ NOVO: Detectar campanha nova
                 const chaveUnica = `${estacao}-${campanha}`;
                 const ehCampanhaNova = !campanhasDetectadas.has(chaveUnica);
@@ -1754,7 +1746,6 @@ function atualizarTicker(dados) {
                     const dataAnterior = new Date(dataHoje.getTime() - 24 * 60 * 60 * 1000); // Subtrair 1 dia
                     const dataFormatada = dataAnterior.toISOString().split('T')[0]; // YYYY-MM-DD
                     campanhasDataDeteccao.set(chaveUnica, dataFormatada);
-                    console.log(`   🎉 CAMPANHA NOVA DETECTADA: ${campanha} em ${estacao} (data: ${dataFormatada})`);
                 }
                 
                 // ⭐ NOVO: Contar inserções desta campanha nos dados completos
@@ -1890,7 +1881,6 @@ function configurarAutoRemoveTicker(itemId) {
     }, 120000); // 120 segundos (aumentado de 60s)
     
     tickerItemsTimeout.set(itemId, timeoutId);
-    console.log(`⏱️ Auto-remove configurado para ${itemId} (120s)`);
 }
 
 /**

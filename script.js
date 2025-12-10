@@ -1728,8 +1728,6 @@ function atualizarTicker(dados) {
     // 🔥 LÓGICA: Mostrar TODAS as últimas inserções executadas
     // Cada inserção aparece com timestamp e desaparece em 120 segundos
     if (dados.insercoesRecentes && Array.isArray(dados.insercoesRecentes) && dados.insercoesRecentes.length > 0) {
-        console.log(`%c📺 ${dados.insercoesRecentes.length} inserções recentes para exibir no ticker`, 'color: #51cf66; font-weight: bold;');
-        
         dados.insercoesRecentes.slice(0, 15).forEach((insercao, idx) => {
             try {
                 const itemId = `ticker-${insercao.city || 'unknown'}-${insercao.hour || 'unknown'}-${idx}`;
@@ -1745,8 +1743,6 @@ function atualizarTicker(dados) {
                 const cliente = insercao.client || insercao.campaign || 'N/A'; // Usar cliente da inserção
                 // ⭐ Limpar nome da campanha removendo prefixos numéricos
                 const campanha = limparNomeCampanha(insercao.campaign) || 'N/A';
-                
-                console.log(`   [${idx + 1}] ${hora} - ${estacao} (${cidade}) - Campanha: ${campanha}`);
                 
                 // ⭐ NOVO: Detectar campanha nova
                 const chaveUnica = `${estacao}-${campanha}`;
@@ -1878,7 +1874,6 @@ function configurarAutoRemoveTicker(itemId) {
     }, 120000); // 120 segundos (aumentado de 60s)
     
     tickerItemsTimeout.set(itemId, timeoutId);
-    console.log(`⏱️ Auto-remove configurado para ${itemId} (120s)`);
 }
 
 /**
