@@ -568,11 +568,11 @@ function extrairCidadeDoNomeEmissora(nomeCompleto) {
 
 async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     /**
-     * 🕐 DELAY DE 2 HORAS - FILTRO IMPLEMENTADO
+     * 🕐 DELAY DE 1 HORA - FILTRO IMPLEMENTADO
      * 
-     * Por que? Dados da API Audiency chegam com ~2 horas de delay.
+     * Por que? Dados da API Audiency chegam com ~1 hora de delay.
      * Exemplo:
-     *   - Inserção rodou em: 16:18
+     *   - Inserção rodou em: 17:18
      *   - Sistema recebeu em: 18:18
      *   - Mostramos para usuário como: 16:18 (criando ilusão de "ao vivo")
      * 
@@ -597,9 +597,10 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     const horaAtualNum = parseInt(horaAtual);
     const minutoAtualNum = parseInt(minutoAtual);
 
-    // 🕐 DELAY DE 2 HORAS - Aplicar filtro para mostrar inserções recentes
-    // Se o horário atual é 18:00, mostrar inserções que ocorreram até 16:00
-    let horaFiltroNum = horaAtualNum - 2;
+    // 🕐 DELAY DE 1 HORA - Aplicar filtro para mostrar inserções recentes
+    // Dados chegam 1h atrasados da API Audiency. Aplicamos filtro de 1h para mostrar a inserção mais recente disponível
+    // Se o horário atual é 18:00, mostrar inserções que ocorreram até 17:00
+    let horaFiltroNum = horaAtualNum - 1;
     let minutoFiltroNum = minutoAtualNum;
 
     if (horaFiltroNum < 0) {
@@ -607,7 +608,7 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     }
 
     console.log(`⏰ Hora atual: ${horaAtualNum}:${minutoAtualNum}`);
-    console.log(`⏰ FILTRO DE 2 HORAS APLICADO - Mostrando inserções até: ${String(horaFiltroNum).padStart(2, '0')}:${String(minutoFiltroNum).padStart(2, '0')}`);
+    console.log(`⏰ FILTRO DE 1 HORA APLICADO - Mostrando inserções até: ${String(horaFiltroNum).padStart(2, '0')}:${String(minutoFiltroNum).padStart(2, '0')}`);
     console.log(`   (Sincronização: ticker, pingas, métricas e lista TODOS usam este filtro)`);
 
     // Processar em batches (3 por vez para evitar timeout)
@@ -688,8 +689,8 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                             return; // Pular inserções sem cidade
                         }
 
-                        // 🕐 FILTRO COM DELAY DE 2 HORAS: Últimas inserções recentes
-                        // Mostra inserções que ocorreram até (agora - 2 horas)
+                        // 🕐 FILTRO COM DELAY DE 1 HORA: Últimas inserções recentes
+                        // Mostra inserções que ocorreram até (agora - 1 hora)
                         const isRecente = (
                             (horaItem === horaFiltroNum && minutoItem <= minutoFiltroNum) ||
                             (horaItem < horaFiltroNum)
