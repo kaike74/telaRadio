@@ -579,7 +579,7 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
      * Como funciona?
      *   - Hora atual: 18:00
      *   - Filtro de delay aplicado: mostra dados até 16:00
-     *   - Resultado: Usuário vê dados com 2h de delay mas pensa que é recente
+     *   - Resultado: Usuário vê dados recentes graças ao filtro
      * 
      * Usado em:
      *   ✅ Últimas Inserções (lista exibida no dashboard)
@@ -597,8 +597,18 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     const horaAtualNum = parseInt(horaAtual);
     const minutoAtualNum = parseInt(minutoAtual);
 
+    // 🕐 DELAY DE 2 HORAS - Aplicar filtro para mostrar inserções recentes
+    // Se o horário atual é 18:00, mostrar inserções que ocorreram até 16:00
+    let horaFiltroNum = horaAtualNum - 2;
+    let minutoFiltroNum = minutoAtualNum;
+
+    if (horaFiltroNum < 0) {
+        horaFiltroNum += 24; // Ajustar para dia anterior
+    }
+
     console.log(`⏰ Hora atual: ${horaAtualNum}:${minutoAtualNum}`);
-    console.log(`📡 Exibindo inserções em tempo real (sem delay)`);
+    console.log(`⏰ FILTRO DE 2 HORAS APLICADO - Mostrando inserções até: ${String(horaFiltroNum).padStart(2, '0')}:${String(minutoFiltroNum).padStart(2, '0')}`);
+    console.log(`   (Sincronização: ticker, pingas, métricas e lista TODOS usam este filtro)`);
 
     // Processar em batches (3 por vez para evitar timeout)
     const batches = [];
@@ -672,16 +682,24 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                         // ✅ Adicionar TODAS as inserções do dia
                         todasInsercoes.push(insercao);
 
-                        // 📡 SEM DELAY: Todas as inserções são consideradas recentes
-                        insercoesRecentes.push(insercao);
-                        recentesCount++;
+                        // 🕐 FILTRO COM DELAY DE 2 HORAS: Últimas inserções recentes
+                        // Mostra inserções que ocorreram até (agora - 2 horas)
+                        const isRecente = (
+                            (horaItem === horaFiltroNum && minutoItem <= minutoFiltroNum) ||
+                            (horaItem < horaFiltroNum)
+                        );
 
-                        // 📋 REGISTRAR NO LOG DETALHADO
+                        if (isRecente) {
+                            insercoesRecentes.push(insercao);
+                            recentesCount++;
+                        }
+
+                        // 📋 REGISTRAR TUDO NO LOG DETALHADO
                         logInsercoesDetalhado.push({
                             horaReal: insercao.hour,
                             emissora: insercao.stationName,
                             proposta: insercao.campaign,
-                            horaExibicao: insercao.hour
+                            horaExibicao: isRecente ? insercao.hour : `[FILTRADO] ${insercao.hour} (posterior a ${String(horaFiltroNum).padStart(2, '0')}:${String(minutoFiltroNum).padStart(2, '0')})`
                         });
                     });
 
@@ -710,16 +728,30 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     if (logInsercoesDetalhado.length === 0) {
         console.log(`⚠️ Nenhuma inserção recebida!`);
     } else {
-        console.log(`\n✅ INSERÇÕES EM TEMPO REAL (${logInsercoesDetalhado.length}):`);
-        logInsercoesDetalhado.forEach((log, idx) => {
-            console.log(`   ${(idx + 1).toString().padStart(3)} | ${log.horaReal.padEnd(8)} | ${log.emissora.padEnd(40)} | ${log.proposta.padEnd(30)}`);
-        });
+        // Agrupar por status
+        const filtradas = logInsercoesDetalhado.filter(l => l.horaExibicao.includes('[FILTRADO]'));
+        const exibidas = logInsercoesDetalhado.filter(l => !l.horaExibicao.includes('[FILTRADO]'));
+
+        console.log(`\n✅ INSERÇÕES QUE ENTRARÃO NO DISPLAY (${exibidas.length}):`);
+        if (exibidas.length > 0) {
+            exibidas.forEach((log, idx) => {
+                console.log(`   ${(idx + 1).toString().padStart(3)} | ${log.horaReal.padEnd(8)} | ${log.emissora.padEnd(40)} | ${log.proposta.padEnd(30)}`);
+            });
+        }
+
+        if (filtradas.length > 0) {
+            console.log(`\n🕐 INSERÇÕES FILTRADAS PELO DELAY DE 2H (${filtradas.length}):`);
+            filtradas.forEach((log, idx) => {
+                console.log(`   ${(idx + 1).toString().padStart(3)} | ${log.horaReal.padEnd(8)} | ${log.emissora.padEnd(40)} | ${log.proposta.padEnd(30)} | MOTIVO: ${log.horaExibicao.substring(10)}`);
+            });
+        }
     }
     
     console.log(`${'='.repeat(120)}\n`);
 
     // 📋 GUARDAR LOGS GLOBALMENTE PARA ACESSO VIA API
-    const exibidas = logInsercoesDetalhado;
+    const filtradas = logInsercoesDetalhado.filter(l => l.horaExibicao.includes('[FILTRADO]'));
+    const exibidas = logInsercoesDetalhado.filter(l => !l.horaExibicao.includes('[FILTRADO]'));
     
     logsInsercoesGlobal = {
         timestamp: new Date().toISOString(),
@@ -727,10 +759,11 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
         dataHoje: dataHoje,
         total: logInsercoesDetalhado.length,
         exibidas: exibidas,
+        filtradas: filtradas,
         todos: logInsercoesDetalhado.slice(-500) // 🔒 LIMITAR A 500 ÚLTIMOS LOGS
     };
     
-    console.log(`✨ Logs salvos globalmente - ${exibidas.length} inserções em tempo real (${logInsercoesDetalhado.length} total)`);
+    console.log(`✨ Logs salvos globalmente - ${exibidas.length} exibidas, ${filtradas.length} filtradas (${logInsercoesDetalhado.length} total)`);
 
     // Ordenar por mais recente
     insercoesRecentes.sort((a, b) => {
