@@ -358,6 +358,19 @@ async function buscarInsercoesRecentes() {
 
         const data = await response.json();
 
+        // 🔍 DEBUG: Mostrar exatamente o que retornou
+        console.log(`📡 Resposta /api/insercoes/recentes:`, {
+            success: data.success,
+            totalInsercoes: data.insercoesRecentes?.length || 0,
+            temMetricas: !!data.metricas,
+            primeiras3: data.insercoesRecentes?.slice(0, 3).map(i => ({
+                hora: i.hour,
+                timestamp: i.timestamp,
+                estacao: i.stationName,
+                cidade: i.city
+            }))
+        });
+
         LoggerOtimizado.log(`/api/insercoes/recentes respondeu`, 'api-insercoes');
 
         if (data.success) {
