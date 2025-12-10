@@ -289,6 +289,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Buscar dados iniciais
     buscarDashboardCompleto().then(() => {
+        // 🔥 Buscar inserções IMEDIATAMENTE na primeira vez
+        buscarInsercoesRecentes();
+        
         // Configurar polling para animações APENAS APÓS dashboard carregar
         setInterval(buscarInsercoesRecentes, CONFIG.POLLING_INTERVAL);
         console.log('✅ Polling de inserções iniciado a cada ' + CONFIG.POLLING_INTERVAL + 'ms');
@@ -358,74 +361,57 @@ async function buscarInsercoesRecentes() {
 
         const data = await response.json();
 
-        // 🔍 DEBUG: Mostrar exatamente o que retornou
-        console.log(`📡 Resposta /api/insercoes/recentes:`, {
-            success: data.success,
-            totalInsercoes: data.insercoesRecentes?.length || 0,
-            temMetricas: !!data.metricas,
-            primeiras3: data.insercoesRecentes?.slice(0, 3).map(i => ({
-                hora: i.hour,
-                timestamp: i.timestamp,
-                estacao: i.stationName,
-                cidade: i.city
-            }))
-        });
-
-        LoggerOtimizado.log(`/api/insercoes/recentes respondeu`, 'api-insercoes');
-
-        if (data.success) {
-            if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                // ⭐ RENDERIZAR LISTA
-                renderizarListaInsercoes(data.insercoesRecentes);
+        if (data.success && data.insercoesRecentes && data.insercoesRecentes.length > 0) {
+            // ⭐ RENDERIZAR LISTA
+            renderizarListaInsercoes(data.insercoesRecentes);
+            
+            // 📍 CRIAR PINGS APENAS PARA INSERÇÕES NOVAS
+            const insercoesPing = [];
+            
+            data.insercoesRecentes.forEach(insercao => {
+                // Validar se tem timestamp válido
+                if (!insercao.timestamp) {
+                    console.warn(`⚠️ Inserção sem timestamp:`, insercao);
+                    return;
+                }
                 
-                // 📍 CRIAR PINGS APENAS PARA INSERÇÕES NOVAS
-                const insercoesPing = [];
+                // Se é a primeira carga (ultimaInsercaoTimestamp === null)
+                if (ultimaInsercaoTimestamp === null) {
+                    // Não criar pings na primeira carga
+                    return;
+                }
                 
-                data.insercoesRecentes.forEach(insercao => {
-                    // Validar se tem timestamp válido
-                    if (!insercao.timestamp) {
-                        console.warn(`⚠️ Inserção sem timestamp:`, insercao);
-                        return;
-                    }
-                    
-                    // Se é a primeira carga (ultimaInsercaoTimestamp === null)
-                    if (ultimaInsercaoTimestamp === null) {
-                        // Não criar pings na primeira carga
-                        return;
-                    }
-                    
-                    // COMPARAR: timestamp > ultimaInsercaoTimestamp
-                    // Formato esperado: "2025-12-10 10:25:30"
-                    if (insercao.timestamp > ultimaInsercaoTimestamp) {
-                        insercoesPing.push(insercao);
-                    }
+                // COMPARAR: timestamp > ultimaInsercaoTimestamp
+                // Formato esperado: "2025-12-10 10:25:30"
+                if (insercao.timestamp > ultimaInsercaoTimestamp) {
+                    insercoesPing.push(insercao);
+                }
+            });
+            
+            // 🔴 Criar pings para inserções novas
+            if (insercoesPing.length > 0) {
+                LoggerOtimizado.grupo('📍 PINGS CRIADOS', {
+                    'Novas inserções': insercoesPing.length,
+                    'Total recebidas': data.insercoesRecentes.length
                 });
                 
-                // 🔴 Criar pings para inserções novas
-                if (insercoesPing.length > 0) {
-                    LoggerOtimizado.grupo('📍 PINGS CRIADOS', {
-                        'Novas inserções': insercoesPing.length,
-                        'Total recebidas': data.insercoesRecentes.length
-                    });
-                    
-                    insercoesPing.forEach((insercao, index) => {
-                        buscarCoordenadaECriarPinga(insercao, `pinga-${Date.now()}-${index}`);
-                    });
-                } else {
-                    console.log(`ℹ️ Nenhuma inserção nova (todas mais antigas que ${ultimaInsercaoTimestamp})`);
-                }
-                
-                // ✅ ATUALIZAR: Última inserção processada
-                // A primeira inserção (index 0) é sempre a mais recente
-                const primeiraInsercao = data.insercoesRecentes[0];
-                const novoTimestamp = primeiraInsercao.timestamp;
-                
-                if (ultimaInsercaoTimestamp !== novoTimestamp) {
-                    console.log(`⏱️ Atualizando timestamp: ${ultimaInsercaoTimestamp} → ${novoTimestamp}`);
-                    ultimaInsercaoTimestamp = novoTimestamp;
-                } else {
-                    console.log(`⏱️ Timestamp inalterado: ${ultimaInsercaoTimestamp}`);
-                }
+                insercoesPing.forEach((insercao, index) => {
+                    buscarCoordenadaECriarPinga(insercao, `pinga-${Date.now()}-${index}`);
+                });
+            } else {
+                console.log(`ℹ️ Nenhuma inserção nova (todas mais antigas que ${ultimaInsercaoTimestamp})`);
+            }
+            
+            // ✅ ATUALIZAR: Última inserção processada
+            // A primeira inserção (index 0) é sempre a mais recente
+            const primeiraInsercao = data.insercoesRecentes[0];
+            const novoTimestamp = primeiraInsercao.timestamp;
+            
+            if (ultimaInsercaoTimestamp !== novoTimestamp) {
+                console.log(`⏱️ Atualizando timestamp: ${ultimaInsercaoTimestamp} → ${novoTimestamp}`);
+                ultimaInsercaoTimestamp = novoTimestamp;
+            } else {
+                console.log(`⏱️ Timestamp inalterado: ${ultimaInsercaoTimestamp}`);
             }
 
             // 🎬 Atualizar ticker
