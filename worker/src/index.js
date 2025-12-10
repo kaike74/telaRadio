@@ -298,7 +298,11 @@ async function handleInsercoesRecentes(env, corsHeaders) {
         const todasCampanhas = await buscarTodasCampanhas();
         const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
         
-        console.log(`📊 ${campanhasAtivas.length} campanhas ativas encontradas`);
+        console.log(`📊 ${todasCampanhas.length} campanhas totais, ${campanhasAtivas.length} ativas`);
+        
+        if (campanhasAtivas.length === 0) {
+            console.warn(`⚠️ NENHUMA CAMPANHA ATIVA! Retornando array vazio`);
+        }
         
         // Buscar inserções
         const resultado = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
@@ -347,6 +351,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
         return new Response(JSON.stringify({
             success: false,
             error: error.message,
+            insercoesRecentes: [],
             timestamp: new Date().toISOString()
         }), {
             status: 500,
