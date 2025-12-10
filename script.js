@@ -382,9 +382,6 @@ async function buscarInsercoesRecentes() {
                     // Formato esperado: "2025-12-10 10:25:30"
                     if (insercao.timestamp > ultimaInsercaoTimestamp) {
                         insercoesPing.push(insercao);
-                        console.log(`✅ PING NOVO: ${insercao.timestamp} > ${ultimaInsercaoTimestamp}`);
-                    } else {
-                        console.log(`⏭️ Inserção antiga: ${insercao.timestamp} ≤ ${ultimaInsercaoTimestamp}`);
                     }
                 });
                 
