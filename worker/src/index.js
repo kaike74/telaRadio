@@ -275,176 +275,86 @@ async function handleDashboard(env, corsHeaders) {
 
 // ===== ENDPOINT: Inserções Recentes (para animações) =====
 async function handleInsercoesRecentes(env, corsHeaders) {
-    console.log("🔥 GET /api/insercoes/recentes");
+    console.log("🔥 GET /api/insercoes/recentes - BUSCAR DADOS FRESCOS");
 
     // Usar horário REAL de Brasília
     const agora = new Date();
     const offsetBrasilia = -3 * 60;
     const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
     const dataHoje = agoraBrasilia.toISOString().split('T')[0];
+    const horaAtual = String(agoraBrasilia.getHours()).padStart(2, '0');
+    const minutoAtual = String(agoraBrasilia.getMinutes()).padStart(2, '0');
     
     // 🔍 DEBUG: Mostrar o tempo que estamos usando
-    const horaFormatada = String(agoraBrasilia.getHours()).padStart(2, '0') + ':' + 
-                          String(agoraBrasilia.getMinutes()).padStart(2, '0') + ':' + 
-                          String(agoraBrasilia.getSeconds()).padStart(2, '0');
+    const horaFormatada = horaAtual + ':' + minutoAtual + ':' + String(agoraBrasilia.getSeconds()).padStart(2, '0');
     console.log(`🕐 TEMPO BRASÍLIA: ${dataHoje} ${horaFormatada}`);
-    console.log(`🌍 TEMPO UTC: ${agora.toISOString()}`);
-
-    // Ler dashboard completo do cache
-    if (!env.DASHBOARD_KV) {
-        return new Response(JSON.stringify({
-            success: false,
-            error: "KV não configurado"
-        }), {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-    }
 
     try {
-        const cacheDashboard = await env.DASHBOARD_KV.get(`dashboard-completo-${dataHoje}`);
-
-        if (!cacheDashboard) {
-            return new Response(JSON.stringify({
-                success: true,
-                animacoes: [],
-                metricas: null,
-                message: "Nenhum dado em cache. Aguardando próxima atualização do dashboard completo."
-            }), {
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-            });
-        }
-
-        let parsedCache;
-        try {
-            parsedCache = JSON.parse(cacheDashboard);
-        } catch (parseError) {
-            console.error(`❌ Erro ao fazer parse do cache: ${parseError.message}`);
-            return new Response(JSON.stringify({
-                success: true,
-                animacoes: [],
-                insercoesRecentes: [],
-                metricas: null,
-                error: `Cache inválido: ${parseError.message}`
-            }), {
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-            });
-        }
-
-        let { insercoesRecentes, coordenadas, metricas } = parsedCache || {};
+        // 1️⃣ TENTAR CACHE PRIMEIRO (mais rápido)
+        let insercoesRecentes = [];
+        let fromCache = false;
         
-        // ✅ Garantir que os arrays existem
+        if (env.DASHBOARD_KV) {
+            try {
+                const cacheDashboard = await env.DASHBOARD_KV.get(`dashboard-completo-${dataHoje}`);
+                if (cacheDashboard) {
+                    const parsedCache = JSON.parse(cacheDashboard);
+                    if (parsedCache.insercoesRecentes && Array.isArray(parsedCache.insercoesRecentes)) {
+                        insercoesRecentes = parsedCache.insercoesRecentes;
+                        fromCache = true;
+                        console.log(`✅ Dados carregados do CACHE`);
+                    }
+                }
+            } catch (cacheError) {
+                console.warn(`⚠️ Erro ao ler cache: ${cacheError.message}`);
+            }
+        }
+        
+        // 2️⃣ SE CACHE VAZIO, BUSCAR DIRETO DA API AUDIENCY
+        if (insercoesRecentes.length === 0) {
+            console.log(`📡 Cache vazio! Buscando dados FRESCOS da API Audiency...`);
+            
+            // Buscar campanhas
+            const todasCampanhas = await buscarTodasCampanhas();
+            const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
+            
+            console.log(`📊 ${campanhasAtivas.length} campanhas ativas encontradas`);
+            
+            // Buscar inserções
+            const resultado = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
+            insercoesRecentes = resultado.insercoesRecentes || [];
+            
+            console.log(`🆕 ${insercoesRecentes.length} inserções FRESCAS obtidas da API`);
+        }
+        
+        // Garantir que é array
         if (!Array.isArray(insercoesRecentes)) {
-            console.warn(`⚠️ insercoesRecentes não é array, inicializando como vazio`);
             insercoesRecentes = [];
         }
-        if (!Array.isArray(coordenadas)) {
-            console.warn(`⚠️ coordenadas não é array, inicializando como vazio`);
-            coordenadas = [];
-        }
-        if (!metricas || typeof metricas !== 'object') {
-            console.warn(`⚠️ metricas inválido, inicializando como vazio`);
-            metricas = {};
-        }
-
-        // ⭐ OPÇÃO B: Sempre criar animações para TODAS as inserções recentes
-        // Não rastreamos histórico - cada inserção na lista gera um ping
-        // Isso cria a "ilusão de acompanhamento em tempo real" conforme pedido
-
-        console.log(`📦 Cache carregado:`);
-        console.log(`   Inserções: ${insercoesRecentes.length}`);
-        console.log(`   Coordenadas: ${coordenadas.length}`);
         
-        // 🔍 DEBUG: Mostrar as 5 PRIMEIRAS inserções do cache
-        console.log(`\n📋 PRIMEIRAS 5 INSERÇÕES DO CACHE (COM DELAY DE 2H JÁ APLICADO):`);
+        console.log(`📦 Total de inserções para retornar: ${insercoesRecentes.length}`);
+        
+        // Construir resposta
+        const response = {
+            success: true,
+            timestamp: new Date().toISOString(),
+            horaBrasilia: `${horaAtual}:${minutoAtual}`,
+            insercoesRecentes: insercoesRecentes.slice(0, 100),
+            fromCache: fromCache,
+            debug: {
+                totalInsercoes: insercoesRecentes.length,
+                origem: fromCache ? 'cache-dashboard' : 'api-audiency-fresca'
+            }
+        };
+        
         if (insercoesRecentes.length > 0) {
-            insercoesRecentes.slice(0, 5).forEach((ins, i) => {
-                console.log(`   [${i+1}] ${ins.hour || 'SEM HORA'} - ${ins.stationName || 'SEM NOME'} - ${ins.city || 'SEM CIDADE'}`);
-                console.log(`         📋 Essas inserções JÁ têm o delay de 2h aplicado pelo buscarDashboardCompleto()`);
+            console.log(`\n📋 PRIMEIRAS 3 INSERÇÕES RETORNADAS:`);
+            insercoesRecentes.slice(0, 3).forEach((ins, i) => {
+                console.log(`   [${i+1}] ${ins.hour} - ${ins.stationName} (${ins.city})`);
             });
-        } else {
-            console.log(`   ⚠️ Nenhuma inserção no cache!`);
         }
         
-        // 🔍 DEBUG: Mostrar as coordenadas disponíveis
-        console.log(`\n🌐 COORDENADAS DISPONÍVEIS:`);
-        if (coordenadas.length > 0) {
-            console.log(`   Total: ${coordenadas.length}`);
-            coordenadas.slice(0, 5).forEach((coord, i) => {
-                console.log(`   [${i+1}] ${coord.cidade || 'SEM CIDADE'} - (${coord.lat?.toFixed(2)}, ${coord.lng?.toFixed(2)})`);
-            });
-        } else {
-            console.log(`   ⚠️ Nenhuma coordenada!`);
-        }
-
-        // ⭐ OPÇÃO B: TODAS as inserções recentes geram animações
-        // Não filtramos por histórico - a lista é a fonte de verdade
-        console.log(`\n✨ CONVERTENDO ${insercoesRecentes.length} INSERÇÕES EM ANIMAÇÕES`);
-
-        // Calcular animações para TODAS as inserções recentes
-        let animacoes = [];
-        try {
-            animacoes = calcularAnimacoesAtivas(
-                insercoesRecentes,
-                coordenadas,
-                agoraBrasilia
-            );
-        } catch (animError) {
-            console.error(`❌ ERRO em calcularAnimacoesAtivas: ${animError.message}`);
-            console.error(`   Stack: ${animError.stack}`);
-            animacoes = [];
-        }
-        
-        console.log(`✨ ${animacoes.length} animações para exibir (todas as inserções recentes)`);
-        console.log(`📊 Métricas do cache: ${metricas?.campanhasAtivas || 0} campanhas, ${metricas?.emissorasAtivas || 0} rádios, ${metricas?.insercoesHoje || 0} inserções`);
-
-        // 🔍 IMPORTANTE: Confirmar que o delay de 2h foi aplicado
-        console.log(`\n🕐 CONFIRMAÇÃO DO DELAY DE 2 HORAS:`);
-        console.log(`   ✅ Todas as inserções recentes com delay de 2h JÁ aplicado`);
-        console.log(`   ✅ O pinga RESPEITA o delay - mostra inserção com horário original`);
-        console.log(`   ✅ Exemplo: Inserção que rodou às 16:30 será mostrada como 16:30 (mesmo se agora são 18:30)`);
-
-        // 🔍 DEBUG: Verificar o que vai ser retornado
-        const insercoesParaRetornar = Array.isArray(insercoesRecentes) ? insercoesRecentes.slice(0, 100) : [];
-        console.log(`\n📤 RESPOSTA SENDO ENVIADA:`);
-        console.log(`   animacoes.length: ${animacoes?.length || 0}`);
-        console.log(`   insercoesRecentes.length: ${insercoesParaRetornar.length}`);
-        if (insercoesParaRetornar.length > 0) {
-            console.log(`   Primeiras 3 inserções na resposta (com delay de 2h aplicado):`);
-            insercoesParaRetornar.slice(0, 3).forEach((ins, i) => {
-                console.log(`      [${i+1}] ${ins.hour} - ${ins.stationName} (${ins.city}) ← Este é o horário COM delay já aplicado`);
-            });
-        }
-
-
-        // Construir resposta com segurança
-        let responseBody;
-        try {
-            responseBody = JSON.stringify({
-                success: true,
-                timestamp: new Date().toISOString(),
-                animacoes: animacoes || [],
-                insercoesRecentes: insercoesParaRetornar,
-                metricas: metricas || null,
-                debug: {
-                    totalInsercoesCache: insercoesRecentes?.length || 0,
-                    animacoesParaExibir: animacoes?.length || 0,
-                    insercoesRetornadas: insercoesParaRetornar.length,
-                    opcao: "B - Ping para TODAS as inserções recentes"
-                }
-            });
-        } catch (stringifyError) {
-            console.error(`❌ ERRO ao fazer JSON.stringify: ${stringifyError.message}`);
-            responseBody = JSON.stringify({
-                success: true,
-                animacoes: [],
-                insercoesRecentes: [],
-                metricas: null,
-                error: `Erro ao serializar resposta: ${stringifyError.message}`
-            });
-        }
-
-        return new Response(responseBody, {
+        return new Response(JSON.stringify(response), {
             headers: {
                 ...corsHeaders,
                 "Content-Type": "application/json",
@@ -453,13 +363,12 @@ async function handleInsercoesRecentes(env, corsHeaders) {
         });
 
     } catch (error) {
-        console.error(`❌ Erro ao processar inserções recentes: ${error.message}`);
+        console.error(`❌ ERRO em handleInsercoesRecentes: ${error.message}`);
         console.error(`   Stack: ${error.stack}`);
-        console.error(`   Tipo: ${typeof error}`);
+        
         return new Response(JSON.stringify({
             success: false,
             error: error.message,
-            stack: error.stack,
             timestamp: new Date().toISOString()
         }), {
             status: 500,
@@ -469,6 +378,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
 }
 
 // ===== FUNÇÕES AUXILIARES =====
+
 
 async function buscarTodasCampanhas() {
     const todasCampanhas = [];
