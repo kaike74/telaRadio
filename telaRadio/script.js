@@ -1916,7 +1916,6 @@ function renderizarTickerDinamico(novoItems) {
         // Verificar se item já existe
         const existente = document.querySelector(`[data-ticker-id="${itemId}"]`);
         if (existente) {
-            console.log(`   ⏭️  Item já existe (pulando): ${itemId}`);
             return; // Skip duplicatas
         }
         
