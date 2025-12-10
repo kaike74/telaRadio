@@ -359,23 +359,34 @@ async function buscarInsercoesRecentes() {
         LoggerOtimizado.log(`/api/insercoes/recentes respondeu`, 'api-insercoes');
 
         if (data.success) {
-            // ⭐ SINCRONIZAÇÃO PERFEITA: Lista e Pingas ao MESMO TEMPO
             if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                LoggerOtimizado.grupo('📋🔴 SINCRONIZAÇÃO SIMULÂNEA: Lista + Pingas', {
-                    'Inserções': data.insercoesRecentes.length,
-                    'Ação': 'Renderizar lista + Criar pings simultaneamente'
-                });
-                
-                // 1. Renderizar lista de inserções
+                // ⭐ SINCRONIZAÇÃO: Renderizar lista E criar pings APENAS das inserções NOVAS
                 renderizarListaInsercoes(data.insercoesRecentes);
                 
-                // 2. Limpar pings antigos para evitar acúmulo
-                limparPingsAntigos();
-                
-                // 3. Criar pings para TODAS as inserções recentes (simultaneamente)
+                // 🆕 Detectar inserções novas (que não estavam na atualização anterior)
+                const insercoesPing = [];
                 data.insercoesRecentes.forEach((insercao, index) => {
-                    buscarCoordenadaECriarPinga(insercao, `pinga-${Date.now()}-${index}`);
+                    // Criar ID único baseado em timestamp + emissora + hora
+                    const idInsercao = `${insercao.timestamp}-${insercao.stationName}`;
+                    
+                    // Se é uma inserção nova (não vista antes)
+                    if (!insercoesPreviasIds.has(idInsercao)) {
+                        insercoesPreviasIds.add(idInsercao);
+                        insercoesPing.push({ insercao, index });
+                    }
                 });
+                
+                // 🔴 Criar pings APENAS das inserções novas
+                if (insercoesPing.length > 0) {
+                    LoggerOtimizado.grupo('📍 PINGS NOVOS', {
+                        'Inserções novas': insercoesPing.length,
+                        'Ação': 'Criar pings apenas para novas'
+                    });
+                    
+                    insercoesPing.forEach(({ insercao, index }) => {
+                        buscarCoordenadaECriarPinga(insercao, `pinga-${Date.now()}-${index}`);
+                    });
+                }
             }
 
             // 🎬 Atualizar ticker
@@ -812,36 +823,6 @@ function atualizarTemposRelativos() {
             elementoHora.textContent = tempoRelativo;
         }
     });
-}
-
-// =========================
-// LIMPEZA DE PINGS
-// =========================
-
-/**
- * ⭐ LIMPAR PINGS ANTIGOS
- * Remove todos os pings ativos do mapa para evitar acúmulo
- * Chamado antes de renderizar novos pings para manter sincronização perfeita
- */
-function limparPingsAntigos() {
-    const container = document.getElementById('animacoes-layer');
-    if (!container) return;
-    
-    // Remover todos os elementos .pinga do DOM
-    const pingElements = container.querySelectorAll('.pinga');
-    let removidos = 0;
-    
-    pingElements.forEach(pinga => {
-        pinga.remove();
-        removidos++;
-    });
-    
-    // Limpar o mapa de controle
-    animacoesAtivas.clear();
-    
-    if (removidos > 0) {
-        LoggerOtimizado.log(`Limpeza: ${removidos} pings antigos removidos`, 'limpeza-pings');
-    }
 }
 
 // =========================
