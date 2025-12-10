@@ -2061,6 +2061,13 @@ function renderizarTickerDinamico(novoItems) {
         return;
     }
 
+    console.log(`🎬 renderizarTickerDinamico chamado com ${novoItems.length} items`);
+    if (novoItems.length === 0) {
+        console.warn(`⚠️ Nenhum item para renderizar no ticker`);
+    } else {
+        console.log(`📊 Items para ticker:`, novoItems.slice(0, 3).map(i => typeof i === 'string' ? i : i.text || i.id).join(' | '));
+    }
+
     // Adicionar novos items apenas se não existem
     novoItems.forEach((item, index) => {
         const itemId = item.id || `ticker-${Date.now()}-${index}`;
@@ -2092,7 +2099,10 @@ function renderizarTickerDinamico(novoItems) {
         }
         
         tickerItemsContainer.insertBefore(tickerItem, tickerItemsContainer.firstChild);
+        console.log(`✅ Item do ticker adicionado: ${itemId}, total agora: ${tickerItemsContainer.children.length}`);
     });
+    
+    console.log(`📦 Ticker container tem ${tickerItemsContainer.children.length} items visíveis`);
 }
 
 /**
