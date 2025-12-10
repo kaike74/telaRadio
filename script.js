@@ -366,8 +366,9 @@ async function buscarInsercoesRecentes() {
                 // 🆕 Detectar inserções novas (que não estavam na atualização anterior)
                 const insercoesPing = [];
                 data.insercoesRecentes.forEach((insercao, index) => {
-                    // Criar ID único baseado em timestamp + emissora + hora
-                    const idInsercao = `${insercao.timestamp}-${insercao.stationName}`;
+                    // Criar ID único baseado em data + hora + emissora + campanha
+                    // (timestamp muda, por isso usar dados mais estáveis)
+                    const idInsercao = `${insercao.date}|${insercao.hour}|${insercao.stationName}|${insercao.campaignId}`;
                     
                     // Se é uma inserção nova (não vista antes)
                     if (!insercoesPreviasIds.has(idInsercao)) {
