@@ -359,20 +359,23 @@ async function buscarInsercoesRecentes() {
         LoggerOtimizado.log(`/api/insercoes/recentes respondeu`, 'api-insercoes');
 
         if (data.success) {
-            if (data.animacoes && data.animacoes.length > 0) {
-                LoggerOtimizado.grupo('📊 Animações Recebidas', {
-                    'Total': data.animacoes.length,
-                    'Tipo': 'Do Backend'
-                });
-            }
-
-            // ⭐ Atualizar lista de inserções recentes
+            // ⭐ SINCRONIZAÇÃO PERFEITA: Lista e Pingas ao MESMO TEMPO
             if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                LoggerOtimizado.grupo('📋 SINCRONIZAÇÃO: Lista + Pingas', {
+                LoggerOtimizado.grupo('📋🔴 SINCRONIZAÇÃO SIMULÂNEA: Lista + Pingas', {
                     'Inserções': data.insercoesRecentes.length,
-                    'Pingas Criados': data.animacoes?.length || 0
+                    'Ação': 'Renderizar lista + Criar pings simultaneamente'
                 });
+                
+                // 1. Renderizar lista de inserções
                 renderizarListaInsercoes(data.insercoesRecentes);
+                
+                // 2. Limpar pings antigos para evitar acúmulo
+                limparPingsAntigos();
+                
+                // 3. Criar pings para TODAS as inserções recentes (simultaneamente)
+                data.insercoesRecentes.forEach((insercao, index) => {
+                    buscarCoordenadaECriarPinga(insercao, `pinga-${Date.now()}-${index}`);
+                });
             }
 
             // 🎬 Atualizar ticker
@@ -809,6 +812,36 @@ function atualizarTemposRelativos() {
             elementoHora.textContent = tempoRelativo;
         }
     });
+}
+
+// =========================
+// LIMPEZA DE PINGS
+// =========================
+
+/**
+ * ⭐ LIMPAR PINGS ANTIGOS
+ * Remove todos os pings ativos do mapa para evitar acúmulo
+ * Chamado antes de renderizar novos pings para manter sincronização perfeita
+ */
+function limparPingsAntigos() {
+    const container = document.getElementById('animacoes-layer');
+    if (!container) return;
+    
+    // Remover todos os elementos .pinga do DOM
+    const pingElements = container.querySelectorAll('.pinga');
+    let removidos = 0;
+    
+    pingElements.forEach(pinga => {
+        pinga.remove();
+        removidos++;
+    });
+    
+    // Limpar o mapa de controle
+    animacoesAtivas.clear();
+    
+    if (removidos > 0) {
+        LoggerOtimizado.log(`Limpeza: ${removidos} pings antigos removidos`, 'limpeza-pings');
+    }
 }
 
 // =========================
