@@ -110,8 +110,8 @@ const LoggerOtimizado = {
     }
 };
 
-// Exibir resumo a cada 5 segundos
-setInterval(() => LoggerOtimizado.exibirResumo(), 5000);
+// ❌ REMOVIDO: setInterval de LoggerOtimizado que causava overhead na TV
+// O logger agora só é chamado sob demanda via console (window.LoggerOtimizado.exibirResumo())
 
 // Configuração
 const CONFIG = {
@@ -293,20 +293,95 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar ticker de notícias
     renderizarTicker(['Monitorando inserções em tempo real...']);
 
-    // Buscar dados iniciais
-    buscarDashboardCompleto().then(() => {
-        // Configurar polling para animações APENAS APÓS dashboard carregar
-        setInterval(buscarInsercoesRecentes, CONFIG.POLLING_INTERVAL);
-        console.log('✅ Polling de inserções iniciado a cada ' + CONFIG.POLLING_INTERVAL + 'ms');
-        
-        // 🔴 NOVO: Atualizar APENAS as 5 métricas principais a cada 90 segundos
-        intervaloAtualizacaoMetricas = setInterval(atualizarApenasMetricas, CONFIG.METRICAS_REFRESH_INTERVAL);
-        console.log('🔴 Atualização de MÉTRICAS CRÍTICAS iniciada a cada ' + (CONFIG.METRICAS_REFRESH_INTERVAL/1000) + ' segundos');
-    });
-    
-    // Atualizar tempos relativos a cada 10 segundos
-    setInterval(atualizarTemposRelativos, 10000);
+    // Iniciar ciclo serializado de atualização
+    iniciarCicloAtualizacao();
 });
+
+/**
+ * 🎯 INICIAR CICLO DE ATUALIZAÇÃO
+ * Primeira carga completa + inicia loop serializado
+ */
+async function iniciarCicloAtualizacao() {
+    try {
+        // Primeira carga completa
+        await buscarDashboardCompleto();
+        console.log('✅ Dashboard inicial carregado');
+        
+        // Inicia o ciclo de atualização serializado (sem race conditions)
+        cicloAtualizacaoRecorrente();
+    } catch (erro) {
+        console.error('❌ Erro ao iniciar ciclo:', erro);
+        // Tenta novamente em 5 segundos
+        await aguardar(5000);
+        iniciarCicloAtualizacao();
+    }
+}
+
+/**
+ * 🔄 CICLO SERIALIZADO DE ATUALIZAÇÃO
+ * Uma operação por vez: fetch → render → wait → repeat
+ * Elimina race conditions que causavam problemas na TV
+ */
+async function cicloAtualizacaoRecorrente() {
+    try {
+        // Aguardar 5 segundos antes da próxima atualização
+        await aguardar(5000);
+        
+        // 1️⃣ Buscar inserções recentes (a cada 5s)
+        try {
+            const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.insercoesRecentes) {
+                    renderizarListaInsercoes(data.insercoesRecentes);
+                    atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
+                }
+            }
+        } catch (erro) {
+            console.error('❌ Erro ao buscar inserções recentes:', erro);
+        }
+        
+        // 2️⃣ Verificar se é hora de atualizar TUDO (a cada 90s)
+        const agora = Date.now();
+        if (!window._ultimaAtualizacaoCompleta) {
+            window._ultimaAtualizacaoCompleta = agora;
+        }
+        
+        if (agora - window._ultimaAtualizacaoCompleta >= 90000) {
+            try {
+                const fullResponse = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
+                if (fullResponse.ok) {
+                    const fullData = await fullResponse.json();
+                    if (fullData.success) {
+                        // Atualizar apenas as 5 métricas (com proteção de monotonicity)
+                        atualizarApenasMetricas();
+                    }
+                }
+            } catch (erro) {
+                console.error('❌ Erro ao atualizar dashboard completo:', erro);
+            }
+            
+            window._ultimaAtualizacaoCompleta = agora;
+        }
+        
+        // 3️⃣ Atualizar tempos relativos (a cada ciclo)
+        atualizarTemposRelativos();
+        
+    } catch (erro) {
+        console.error('❌ Erro no ciclo de atualização:', erro);
+    }
+    
+    // Continua o ciclo infinitamente
+    cicloAtualizacaoRecorrente();
+}
+
+/**
+ * ⏱️ HELPER: Aguardar com Promise
+ * Substitui setTimeout para melhor controle async
+ */
+function aguardar(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // =========================
 // MAPA

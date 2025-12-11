@@ -110,8 +110,8 @@ const LoggerOtimizado = {
     }
 };
 
-// Exibir resumo a cada 5 segundos
-setInterval(() => LoggerOtimizado.exibirResumo(), 5000);
+// ❌ REMOVIDO: setInterval do LoggerOtimizado (era pesado e desnecessário)
+// O logger agora funciona sob demanda apenas
 
 // Configuração
 const CONFIG = {
@@ -281,11 +281,9 @@ function validarComponentesPinga() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Dashboard iniciado');
+    console.log('🚀 Dashboard iniciado (Modo Serializado)');
     console.log('   Use window.DEBUG.ativar() para ver logs de coordenadas');
     console.log('   Use window.DEBUG.status() para ver status geral');
-    console.log('   Use window.DEBUG.verPingas() para listar pingas no mapa');
-    console.log('   Use window.validarComponentesPinga() para verificar componentes');
 
     // Validar componentes do pinga
     validarComponentesPinga();
@@ -296,30 +294,95 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar ticker de notícias
     renderizarTicker(['Monitorando inserções em tempo real...']);
 
-    // Buscar dados iniciais
-    buscarDashboardCompleto().then(() => {
-        // 🔥 Buscar inserções IMEDIATAMENTE na primeira vez
-        buscarInsercoesRecentes();
-        
-        // Configurar polling para animações APENAS APÓS dashboard carregar
-        setInterval(buscarInsercoesRecentes, CONFIG.POLLING_INTERVAL);
-        console.log('✅ Polling de inserções iniciado a cada ' + CONFIG.POLLING_INTERVAL + 'ms');
-        
-        // ✨ NOVO: Polling de gráficos a cada 5 minutos
-        setInterval(atualizarGraficos, 5 * 60 * 1000);
-        console.log('✅ Polling de gráficos iniciado a cada 5 minutos');
-        
-        // 🔴 NOVO: Atualizar APENAS as 5 métricas principais a cada 90 segundos
-        intervaloAtualizacaoMetricas = setInterval(atualizarApenasMetricas, CONFIG.METRICAS_REFRESH_INTERVAL);
-        console.log('🔴 Atualização de MÉTRICAS CRÍTICAS iniciada a cada ' + (CONFIG.METRICAS_REFRESH_INTERVAL/1000) + ' segundos');
-        
-        // ✨ NOVO: Inicializar logs de monitoramento (atualizam a cada 5 min)
-        inicializarLogsMonitoramento();
-    });
-    
-    // Atualizar tempos relativos a cada 10 segundos
-    setInterval(atualizarTemposRelativos, 10000);
+    // 🔴 NOVO: Iniciar orquestração serializada (único ciclo de atualização)
+    console.log('⏱️ Iniciando ciclo de atualização serializado...');
+    iniciarCicloAtualizacao();
 });
+
+/**
+ * 🔴 NOVO: Orquestração Serializada - Um único ciclo que evita race conditions
+ * Funciona para PC e TV igualmente
+ */
+async function iniciarCicloAtualizacao() {
+    // Buscar dashboard completo PRIMEIRA VEZ
+    console.log('📊 Buscando dados iniciais...');
+    await buscarDashboardCompleto();
+    
+    // Iniciar ciclo infinito
+    cicloAtualizacaoRecorrente();
+}
+
+/**
+ * 🔴 CICLO RECORRENTE: Atualiza a cada 5 segundos de forma serializada
+ * - Busca dados do API
+ * - Renderiza TUDO de uma vez
+ * - Aguarda 5s
+ * - Repete
+ */
+async function cicloAtualizacaoRecorrente() {
+    try {
+        // ⏱️ Intervalo: 5 segundos (inserções recentes)
+        await aguardar(5000);
+        
+        // 📊 Buscar inserções recentes (buscar dados apenas, não renderizar)
+        const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
+        if (response.ok) {
+            const data = await response.json();
+            
+            // Renderizar TUDO DE UMA VEZ (batch rendering)
+            if (data.success && data.insercoesRecentes) {
+                renderizarListaInsercoes(data.insercoesRecentes);
+                atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
+            }
+        }
+        
+        // 📊 A CADA 90 SEGUNDOS: Atualizar métricas + gráficos
+        if (!window._ultimaAtualizacaoCompleta) {
+            window._ultimaAtualizacaoCompleta = Date.now();
+        }
+        
+        const agora = Date.now();
+        const tempoDecorrido = agora - window._ultimaAtualizacaoCompleta;
+        
+        if (tempoDecorrido >= 90000) {
+            console.log('🔴 Atualização completa (métricas + gráficos)...');
+            const responseCompleta = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
+            
+            if (responseCompleta.ok) {
+                const dataCompleta = await responseCompleta.json();
+                if (dataCompleta.success && dataCompleta.metricas) {
+                    // Renderizar métricas e gráficos
+                    atualizarMetricasComDeteccao(dataCompleta.metricas);
+                    renderizarGraficoEmissoras(dataCompleta.metricas.topEmissorasComMaiorNumeroCampanhas || []);
+                    
+                    if (dataCompleta.metricas.top3CidadesComEmissoras?.length > 0) {
+                        renderizarGracoCidadesGrade(dataCompleta.metricas.top3CidadesComEmissoras);
+                    } else {
+                        renderizarGraficoCidades(dataCompleta.metricas.topCidadesComMaiorNumeroEmissoras || []);
+                    }
+                    
+                    window._ultimaAtualizacaoCompleta = Date.now();
+                }
+            }
+        }
+        
+        // 📈 Atualizar tempos relativos
+        atualizarTemposRelativos();
+        
+    } catch (erro) {
+        console.error('❌ Erro no ciclo de atualização:', erro);
+    }
+    
+    // 🔄 Continuar o ciclo
+    cicloAtualizacaoRecorrente();
+}
+
+/**
+ * Helper: Aguardar X milissegundos
+ */
+function aguardar(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // =========================
 // MAPA
@@ -639,166 +702,14 @@ async function buscarLogsInsercoes() {
 }
 
 /**
- * 📺 LOG #1: Dashboard de Últimas Inserções (TOP 10)
- * Exibido a cada 5 minutos no console
- */
-function exibirLogUltimasInsercoes() {
-    setInterval(() => {
-        try {
-            // Buscar dados mais recentes
-            fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                        const top10 = data.insercoesRecentes.slice(0, 10);
-                        
-                        console.clear();
-                        console.log(`%c${'═'.repeat(120)}`, 'color: #51cf66; font-weight: bold; font-size: 13px;');
-                        console.log(`%c10 INSERÇÕES MAIS RECENTES DE HOJE:`, 'color: #51cf66; font-weight: bold; font-size: 13px;');
-                        console.log(`%c${'═'.repeat(120)}`, 'color: #51cf66; font-weight: bold; font-size: 13px;');
-                        
-                        top10.forEach((ins, idx) => {
-                            const num = String(idx + 1).padStart(2);
-                            const hora = (ins.timestamp || ins.hour || '').substring(11, 19).padEnd(8);
-                            const frequencia = (ins.frequency || '---').padEnd(8);
-                            const emissora = (ins.stationName || 'N/A').substring(0, 40).padEnd(40);
-                            const campanha = (ins.campaign || 'N/A').substring(0, 35).padEnd(35);
-                            const cidade = (ins.city || '---').padEnd(20);
-                            const uf = (ins.uf || '--').padEnd(2);
-                            
-                            console.log(
-                                `%c${num}. %c${hora}%c | %c${frequencia}%c | %c${emissora}%c | %c${campanha}%c | %c${cidade}%c / %c${uf}`,
-                                'color: #FFD700; font-weight: bold;',
-                                'color: #5A5FFF;',
-                                'color: #888;',
-                                'color: #E03D99;',
-                                'color: #888;',
-                                'color: #51cf66;',
-                                'color: #888;',
-                                'color: #00D9FF;',
-                                'color: #888;',
-                                'color: #90EE90;',
-                                'color: #888;',
-                                'color: #FFB6C1;'
-                            );
-                        });
-                        
-                        console.log(`%c${'═'.repeat(120)}`, 'color: #51cf66; font-weight: bold; font-size: 13px;');
-                        const agoraLog1 = new Date();
-                        const proximaAtualizacao1 = new Date(agoraLog1.getTime() + 1 * 60 * 1000);
-                        console.log(`%c⏰ Atualizado em: ${agoraLog1.toLocaleTimeString('pt-BR')} | Próxima atualização: ${proximaAtualizacao1.toLocaleTimeString('pt-BR')}`, 'color: #FFD700; font-style: italic;');
-                    }
-                })
-                .catch(err => console.error('❌ Erro ao buscar inserções:', err));
-        } catch (error) {
-            console.error('❌ Erro em exibirLogUltimasInsercoes:', error);
-        }
-    }, 1 * 60 * 1000); // 1 minuto
-}
-
-/**
- * 📅 LOG #2: Próximas Inserções com Countdown
- * Exibido a cada 5 minutos no console
- * Calcula o tempo exato até cada inserção ir ao ar (delay de 2h da API Audiency)
- */
-function exibirLogProximasInsercoes() {
-    setInterval(() => {
-        try {
-            fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                        const agora = new Date();
-                        const agoraBrasilia = new Date(agora.getTime() - 3 * 60 * 60 * 1000); // Brasília = UTC-3
-                        
-                        // Calcular próximas inserções (com delay de ~2h da Audiency)
-                        const proximasInsercoes = data.insercoesRecentes.slice(0, 10).map(ins => {
-                            // Hora de chegada na API (agora no frontend)
-                            const horaChegada = new Date();
-                            
-                            // Hora que foi inserida na rádio (timestamp vem sem delay)
-                            // Convertemos para Date para calcular quando vai exibir
-                            const [hora, minuto, segundo] = (ins.timestamp || ins.hour || '00:00:00').substring(11, 19).split(':').map(Number);
-                            const dataInsercao = new Date();
-                            dataInsercao.setHours(hora, minuto, segundo, 0);
-                            
-                            // Hora que vai exibir no dashboard (delay de 2h)
-                            const horaExibicao = new Date(dataInsercao.getTime() + 2 * 60 * 60 * 1000);
-                            
-                            // Tempo até ir ao ar
-                            const diferenca = horaExibicao.getTime() - horaChegada.getTime();
-                            const minutosRestantes = Math.floor(diferenca / (60 * 1000));
-                            const horasRestantes = Math.floor(minutosRestantes / 60);
-                            const minsRestantes = minutosRestantes % 60;
-                            
-                            return {
-                                ...ins,
-                                horaExibicao,
-                                horaChegada,
-                                minutosRestantes,
-                                horasRestantes,
-                                minsRestantes
-                            };
-                        });
-                        
-                        console.log(`%c${'═'.repeat(160)}`, 'color: #FF6B6B; font-weight: bold; font-size: 13px;');
-                        console.log(`%c⏳ PRÓXIMAS INSERÇÕES - TEMPO PARA IR AO AR (com delay de 2h)`, 'color: #FF6B6B; font-weight: bold; font-size: 13px;');
-                        console.log(`%c${'═'.repeat(160)}`, 'color: #FF6B6B; font-weight: bold; font-size: 13px;');
-                        
-                        proximasInsercoes.forEach((ins, idx) => {
-                            const num = String(idx + 1).padStart(2);
-                            const horaOrigem = (ins.timestamp || ins.hour || '').substring(11, 19).padEnd(8);
-                            const frequencia = (ins.frequency || '---').padEnd(8);
-                            const emissora = (ins.stationName || 'N/A').substring(0, 35).padEnd(35);
-                            const campanha = (ins.campaign || 'N/A').substring(0, 35).padEnd(35);
-                            const cidade = (ins.city || '---').padEnd(18);
-                            
-                            const horaExibicaoStr = ins.horaExibicao.toLocaleTimeString('pt-BR');
-                            const countdown = ins.horasRestantes > 0 
-                                ? `${String(ins.horasRestantes).padStart(2, '0')}h${String(ins.minsRestantes).padStart(2, '0')}m`
-                                : `${String(ins.minsRestantes).padStart(2, '0')}m`;
-                            
-                            console.log(
-                                `%c${num}. %c${horaOrigem}%c | %c${frequencia}%c | %c${emissora}%c | %c${campanha}%c | %c${cidade}%c | %c↗️ %c${horaExibicaoStr}%c | ⏱️  %c${countdown}`,
-                                'color: #FF6B6B; font-weight: bold;',
-                                'color: #5A5FFF;',
-                                'color: #888;',
-                                'color: #E03D99;',
-                                'color: #888;',
-                                'color: #51cf66;',
-                                'color: #888;',
-                                'color: #00D9FF;',
-                                'color: #888;',
-                                'color: #90EE90;',
-                                'color: #888;',
-                                'color: #FFD700;',
-                                'color: #FFB6C1;',
-                                'color: #888;',
-                                'color: #FF6B6B; font-weight: bold;'
-                            );
-                        });
-                        
-                        console.log(`%c${'═'.repeat(160)}`, 'color: #FF6B6B; font-weight: bold; font-size: 13px;');
-                        const agoraLog2 = new Date();
-                        const proximaAtualizacao2 = new Date(agoraLog2.getTime() + 1 * 60 * 1000);
-                        console.log(`%c⏰ Atualizado em: ${agoraLog2.toLocaleTimeString('pt-BR')} | Próxima atualização: ${proximaAtualizacao2.toLocaleTimeString('pt-BR')}`, 'color: #FFD700; font-style: italic;');
-                    }
-                })
-                .catch(err => console.error('❌ Erro ao buscar próximas inserções:', err));
-        } catch (error) {
-            console.error('❌ Erro em exibirLogProximasInsercoes:', error);
-        }
-    }, 1 * 60 * 1000); // 1 minuto
-}
-
-/**
  * ✨ INICIALIZAR LOGS DE MONITORAMENTO
  * Chamado ao iniciar o dashboard
+ * ❌ REMOVIDO: Funções de logging pesadas
  */
 function inicializarLogsMonitoramento() {
-    console.log('%c📡 Iniciando logs de monitoramento...', 'color: #51cf66; font-weight: bold;');
-    exibirLogUltimasInsercoes(); // Primeira execução imediata + a cada 5 min
-    exibirLogProximasInsercoes(); // Primeira execução imediata + a cada 5 min
+    // Removidas as funções de logging pesadas que causavam overhead
+    // Agora o dashboard só loga eventos críticos via console
+    console.log('%c📡 Dashboard em modo otimizado (logging reduzido)', 'color: #51cf66; font-weight: bold;');
 }
 
 // =========================
