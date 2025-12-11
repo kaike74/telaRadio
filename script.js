@@ -300,6 +300,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setInterval(buscarInsercoesRecentes, CONFIG.POLLING_INTERVAL);
         console.log('✅ Polling de inserções iniciado a cada ' + CONFIG.POLLING_INTERVAL + 'ms');
         
+        // ✨ NOVO: Polling de gráficos a cada 5 minutos
+        setInterval(atualizarGraficos, 5 * 60 * 1000);
+        console.log('✅ Polling de gráficos iniciado a cada 5 minutos');
+        
         // ✨ NOVO: Inicializar logs de monitoramento (atualizam a cada 5 min)
         inicializarLogsMonitoramento();
     });
@@ -352,6 +356,42 @@ async function buscarDashboardCompleto() {
         console.error('❌ Erro ao buscar dashboard:', error);
         mostrarErro(`Erro de conexão: ${error.message}`);
         return false;
+    }
+}
+
+/**
+ * 🔄 Atualizar apenas os gráficos (Emissoras e Cidades)
+ * Chamado a cada 5 minutos para manter dados sempre atualizados
+ */
+async function atualizarGraficos() {
+    try {
+        console.log('%c📊 Atualizando gráficos...', 'color: #ffa502; font-weight: bold;');
+
+        const response = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.metricas) {
+            // ✅ Atualizar apenas os gráficos
+            renderizarGraficoEmissoras(data.metricas.topEmissorasComMaiorNumeroCampanhas || []);
+            
+            if (data.metricas.top3CidadesComEmissoras && data.metricas.top3CidadesComEmissoras.length > 0) {
+                renderizarGracoCidadesGrade(data.metricas.top3CidadesComEmissoras);
+            } else {
+                renderizarGraficoCidades(data.metricas.topCidadesComMaiorNumeroEmissoras || []);
+            }
+            
+            console.log(`   ✅ Gráficos atualizados`);
+        } else {
+            console.warn(`⚠️ Resposta inválida na atualização de gráficos`);
+        }
+
+    } catch (error) {
+        console.error(`❌ Erro ao atualizar gráficos:`, error);
     }
 }
 
