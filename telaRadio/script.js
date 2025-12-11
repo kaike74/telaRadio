@@ -115,13 +115,8 @@ const LoggerOtimizado = {
 
 // Configuração
 const CONFIG = {
-    // URL do worker deployado
     API_BASE: 'https://dashboard-radio-worker.kaike-458.workers.dev',
-    POLLING_INTERVAL: 5000, // 5 segundos
-    DASHBOARD_REFRESH_INTERVAL: 60000, // 1 minuto (dados completos)
-    METRICAS_REFRESH_INTERVAL: 90000, // 🔴 90 segundos para atualizar as 5 métricas principais
-    DEVICE_TYPE: DEVICE_TYPE,
-    VERBOSE_LOGS: false // 🚨 SET true PARA LOGS DETALHADOS, false PARA OTIMIZADO
+    DEVICE_TYPE: DEVICE_TYPE
 };
 
 // Estado global
@@ -243,50 +238,10 @@ window.DEBUG = {
 // =========================
 // INICIALIZAÇÃO
 // =========================
-
-// 🔍 Função de validação de componentes - Executar logo após DOM ready
-function validarComponentesPinga() {
-    console.log(`%c🔍 VALIDAÇÃO DE COMPONENTES DO PINGA`, 'color: #FF6B6B; font-weight: bold; font-size: 14px;');
-    
-    const validacoes = {
-        animacoesLayer: document.getElementById('animacoes-layer'),
-        mapaContainer: document.getElementById('mapa-container'),
-        mapaBrasil: document.getElementById('mapa-brasil'),
-        tickerItems: document.getElementById('ticker-items'),
-        listaInsercoes: document.getElementById('lista-insercoes-lateral'),
-        style: document.querySelector('style') || document.querySelector('link[rel="stylesheet"]')
-    };
-
-    console.log(`\n📋 Estado dos componentes:`);
-    Object.entries(validacoes).forEach(([nome, elemento]) => {
-        if (elemento) {
-            console.log(`   ✅ ${nome}: ENCONTRADO`);
-            if (elemento.getBoundingClientRect) {
-                const rect = elemento.getBoundingClientRect();
-                console.log(`      └─ Dimensões: ${rect.width.toFixed(0)}x${rect.height.toFixed(0)}px`);
-                console.log(`      └─ Visível: ${rect.height > 0 ? 'SIM' : 'NÃO'}`);
-            }
-        } else {
-            console.error(`   ❌ ${nome}: NÃO ENCONTRADO`);
-        }
-    });
-
-    console.log(`\n📊 Estado global:`);
-    console.log(`   Animações ativas: ${animacoesAtivas.size}`);
-    console.log(`   Polling ativo: ${CONFIG.POLLING_INTERVAL}ms`);
-    console.log(`   API Base: ${CONFIG.API_BASE}`);
-}
+// INICIALIZAÇÃO
+// =========================
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Dashboard iniciado');
-    console.log('   Use window.DEBUG.ativar() para ver logs de coordenadas');
-    console.log('   Use window.DEBUG.status() para ver status geral');
-    console.log('   Use window.DEBUG.verPingas() para listar pingas no mapa');
-    console.log('   Use window.validarComponentesPinga() para verificar componentes');
-
-    // Validar componentes do pinga
-    validarComponentesPinga();
-
     // Inicializar mapa
     inicializarMapa();
 
