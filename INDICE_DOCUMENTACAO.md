@@ -38,6 +38,24 @@
    - Troubleshooting
    - Checklist final
 
+### 5. **RESUMO_SERIALIZACAO.md** 🔄 [NOVO]
+   - Explicação da refatoração serializada
+   - Root cause: múltiplos setInterval causando race conditions
+   - Solução: cicloAtualizacaoRecorrente()
+   - Impacto esperado: TV 5-15 min → <2 min
+   - Commit: `b9fb6fe`
+   - Status de testes
+   - Checklist de implementação
+
+### 6. **TESTE_SERIALIZACAO.md** 🧪 [NOVO]
+   - Roteiro completo de testes
+   - Checklist para PC e TV
+   - Verificação técnica via console
+   - Sinais de alerta (bugs ainda presentes)
+   - Métricas de sucesso
+   - Template de resultado
+   - Próximos passos após sucesso
+
 ---
 
 ## 🎯 RESUMO TÉCNICO RÁPIDO
