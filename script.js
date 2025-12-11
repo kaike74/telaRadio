@@ -119,6 +119,7 @@ const CONFIG = {
     API_BASE: 'https://dashboard-radio-worker.kaike-458.workers.dev',
     POLLING_INTERVAL: 5000, // 5 segundos
     DASHBOARD_REFRESH_INTERVAL: 60000, // 1 minuto (dados completos)
+    METRICAS_REFRESH_INTERVAL: 90000, // 🔴 90 segundos para atualizar as 5 métricas principais
     DEVICE_TYPE: DEVICE_TYPE,
     VERBOSE_LOGS: false // 🚨 SET true PARA LOGS DETALHADOS, false PARA OTIMIZADO
 };
@@ -137,11 +138,15 @@ let ultimaInsercaoTimestamp = null; // Formato: "2025-12-10 18:33:22"
 let temDadosRenderizados = false;
 
 // 🔧 DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
+// ⚠️ GARANTIA DE MONOTONICICIDADE: Os valores NUNCA diminuem
 let metricasAnteriores = {
     campanhasAtivas: null,
     emissorasAtivas: null,
     insercoesHoje: null
 };
+
+// 🔴 INTERVALO DE ATUALIZAÇÃO DE MÉTRICAS
+let intervaloAtualizacaoMetricas = null;
 
 // 🔧 DEBUG - Ferramentas de diagnóstico
 window.DEBUG = {
@@ -303,6 +308,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // ✨ NOVO: Polling de gráficos a cada 5 minutos
         setInterval(atualizarGraficos, 5 * 60 * 1000);
         console.log('✅ Polling de gráficos iniciado a cada 5 minutos');
+        
+        // 🔴 NOVO: Atualizar APENAS as 5 métricas principais a cada 90 segundos
+        intervaloAtualizacaoMetricas = setInterval(atualizarApenasMetricas, CONFIG.METRICAS_REFRESH_INTERVAL);
+        console.log('🔴 Atualização de MÉTRICAS CRÍTICAS iniciada a cada ' + (CONFIG.METRICAS_REFRESH_INTERVAL/1000) + ' segundos');
         
         // ✨ NOVO: Inicializar logs de monitoramento (atualizam a cada 5 min)
         inicializarLogsMonitoramento();
@@ -814,6 +823,126 @@ function renderizarDashboard(data) {
     renderizarListaInsercoes(data.insercoesRecentes || []);
 
     console.log('✅ Dashboard renderizado');
+}
+
+// =========================
+// 🔴 ATUALIZAÇÃO A CADA 90 SEGUNDOS
+// =========================
+
+/**
+ * 🔴 ATUALIZAR APENAS AS MÉTRICAS (não os gráficos)
+ * Chamado a cada 90 segundos para manter dados SEMPRE ATUALIZADOS
+ * 
+ * GARANTIA DE MONOTONICICIDADE:
+ * - Campanhas, Rádios, Inserções NUNCA diminuem
+ * - Se API retornar valor menor, mantém o anterior (segurança)
+ * - Loga qualquer anomalia de decremento
+ */
+async function atualizarApenasMetricas() {
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        if (!data.metricas) {
+            console.warn('⚠️ Resposta sem métricas');
+            return;
+        }
+        
+        const novasMetricas = data.metricas;
+        const agora = new Date();
+        const horaFormatada = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}:${String(agora.getSeconds()).padStart(2, '0')}`;
+        
+        let houveAlteracao = false;
+        const alteracoes = [];
+        const anomalias = [];
+        
+        // 📢 CAMPANHAS ATIVAS
+        if (novasMetricas.campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
+            const anterior = metricasAnteriores.campanhasAtivas;
+            const novo = novasMetricas.campanhasAtivas;
+            
+            // GARANTIA: Monotonicicidade
+            if (anterior !== null && novo < anterior) {
+                anomalias.push(`⚠️ ANOMALIA CAMPANHAS: ${anterior} → ${novo} (decremento bloqueado, mantendo ${anterior})`);
+                novasMetricas.campanhasAtivas = anterior; // Rejeita decremento
+            } else {
+                houveAlteracao = true;
+                if (anterior !== null) {
+                    const diferenca = novo - anterior;
+                    const sinal = diferenca > 0 ? '+' : '';
+                    alteracoes.push(`📢 Campanhas: ${anterior} → ${novo} (${sinal}${diferenca})`);
+                }
+                const elemCampanhas = document.getElementById('metrica-campanhas');
+                if (elemCampanhas) elemCampanhas.textContent = novo;
+                metricasAnteriores.campanhasAtivas = novo;
+            }
+        }
+        
+        // 📻 RÁDIOS ATIVAS
+        if (novasMetricas.emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
+            const anterior = metricasAnteriores.emissorasAtivas;
+            const novo = novasMetricas.emissorasAtivas;
+            
+            // GARANTIA: Monotonicicidade
+            if (anterior !== null && novo < anterior) {
+                anomalias.push(`⚠️ ANOMALIA RÁDIOS: ${anterior} → ${novo} (decremento bloqueado, mantendo ${anterior})`);
+                novasMetricas.emissorasAtivas = anterior; // Rejeita decremento
+            } else {
+                houveAlteracao = true;
+                if (anterior !== null) {
+                    const diferenca = novo - anterior;
+                    const sinal = diferenca > 0 ? '+' : '';
+                    alteracoes.push(`📻 Rádios: ${anterior} → ${novo} (${sinal}${diferenca})`);
+                }
+                const elemRadios = document.getElementById('metrica-radios');
+                if (elemRadios) elemRadios.textContent = novo;
+                metricasAnteriores.emissorasAtivas = novo;
+            }
+        }
+        
+        // 📊 INSERÇÕES HOJE (A MAIS CRÍTICA)
+        if (novasMetricas.insercoesDia !== metricasAnteriores.insercoesHoje) {
+            const anterior = metricasAnteriores.insercoesHoje;
+            const novo = novasMetricas.insercoesDia;
+            
+            // GARANTIA MÁXIMA: Monotonicicidade
+            if (anterior !== null && novo < anterior) {
+                anomalias.push(`🚨 ANOMALIA INSERÇÕES HOJE: ${anterior} → ${novo} (DECREMENTO BLOQUEADO, mantendo ${anterior})`);
+                novasMetricas.insercoesDia = anterior; // Rejeita QUALQUER decremento
+            } else {
+                houveAlteracao = true;
+                if (anterior !== null && novo !== anterior) {
+                    const diferenca = novo - anterior;
+                    const sinal = diferenca > 0 ? '+' : '';
+                    alteracoes.push(`📊 INSERÇÕES HOJE: ${anterior} → ${novo} (${sinal}${diferenca})`);
+                    
+                    // 🎯 LOG DESTACADO QUANDO INSERÇÕES MUDAM
+                    console.warn(`%c⚡ ${horaFormatada} - MUDANÇA EM INSERÇÕES HOJE!`, 'color: #ff6b6b; font-weight: bold; font-size: 14px;');
+                    console.log(`   Anterior: ${anterior}`);
+                    console.log(`   Novo:     ${novo}`);
+                    console.log(`   Diferença: ${sinal}${diferenca} inserções`);
+                }
+                const elemInsercoes = document.getElementById('metrica-insercoes');
+                if (elemInsercoes) elemInsercoes.textContent = novo;
+                metricasAnteriores.insercoesHoje = novo;
+            }
+        }
+        
+        // Logar anomalias (sempre)
+        if (anomalias.length > 0) {
+            console.error(`%c${horaFormatada} - ANOMALIAS DETECTADAS (BLOQUEADAS)`, 'color: #ff6b6b; font-weight: bold; background: #ffe0e0; padding: 5px;');
+            anomalias.forEach(anom => console.error(`   ${anom}`));
+        }
+        
+        // Logar mudanças (quando houver)
+        if (houveAlteracao && alteracoes.length > 0) {
+            console.log(`%c${horaFormatada} - ✅ MÉTRICAS ATUALIZADAS`, 'color: #51cf66; font-weight: bold;');
+            alteracoes.forEach(alt => console.log(`   ${alt}`));
+        }
+    } catch (erro) {
+        console.error('❌ Erro ao atualizar métricas:', erro);
+    }
 }
 
 // =========================
