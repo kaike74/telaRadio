@@ -249,23 +249,39 @@ window.DEBUG = {
 // =========================
 
 /**
- * 🎯 Converter hora "HH:MM" para timestamp da próxima ocorrência
- * Exemplo: "12:55:23" → agora + 1 hora
+ * 🎯 Converter hora "HH:MM" para timestamp de agendamento
+ * Exemplo: inserção em "12:55:23" → será exibida em "13:55:23"
+ * A hora é agendada para +1 hora da INSERÇÃO, não da hora atual
  */
 function calcularTempoAgendamento(horaInsercao) {
     const [hStr, mStr] = horaInsercao.split(':');
-    const horaOrigem = parseInt(hStr);
-    const minutoOrigem = parseInt(mStr);
+    const horaInsercaoNum = parseInt(hStr);
+    const minutoInsercaoNum = parseInt(mStr);
     
+    // Hora agendada = hora da inserção + 1 hora
+    let horaAgendada = horaInsercaoNum + 1;
+    let minutoAgendado = minutoInsercaoNum;
+    
+    // Se passou de 24h, volta para 0
+    if (horaAgendada >= 24) {
+        horaAgendada = horaAgendada - 24;
+    }
+    
+    // Criar data para a hora agendada (hoje)
     const agora = new Date();
     const offsetBrasilia = -3 * 60;
     const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
     
-    // Criar data para 1 hora depois
-    const tempoAgendado = new Date(agoraBrasilia);
-    tempoAgendado.setHours(tempoAgendado.getHours() + 1);
+    // Pegar a data de hoje (Brasília)
+    const dataHoje = new Date(agoraBrasilia);
+    dataHoje.setHours(horaAgendada, minutoAgendado, 0, 0);
     
-    return tempoAgendado.getTime();
+    // Se a hora agendada já passou hoje, agendar para amanhã
+    if (dataHoje < agoraBrasilia) {
+        dataHoje.setDate(dataHoje.getDate() + 1);
+    }
+    
+    return dataHoje.getTime();
 }
 
 /**
@@ -279,14 +295,20 @@ function adicionarNaFila(insercoes) {
     
     insercoes.forEach(insercao => {
         const tempoAgendado = calcularTempoAgendamento(insercao.hour);
+        const dataAgendada = new Date(tempoAgendado);
+        const horaAgendada = String(dataAgendada.getHours()).padStart(2, '0') + ':' + 
+                            String(dataAgendada.getMinutes()).padStart(2, '0');
+        
         filaAgendamento.push({
             insercao: insercao,
             tempoAgendado: tempoAgendado,
             adicionadoEm: Date.now()
         });
+        
+        console.log(`⏰ ${insercao.hour} → agendada para ${horaAgendada} (${insercao.stationName})`);
     });
     
-    console.log(`📋 Fila de agendamento: ${filaAgendamento.length} inserções aguardando`);
+    console.log(`📋 Fila total: ${filaAgendamento.length} inserções aguardando`);
 }
 
 /**
