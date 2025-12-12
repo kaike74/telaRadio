@@ -481,16 +481,44 @@ function renderizarListaInsercoes(insercoes) {
         return;
     }
     
-    // Validar e filtrar inserções com dados completos
+    // 🔥 FILTRO DE 1 HORA: Manter apenas inserções dos últimos 60 minutos
+    const agora = new Date();
+    const offsetBrasilia = -3 * 60;
+    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
+    const horaAtual = agoraBrasilia.getHours();
+    const minutoAtual = agoraBrasilia.getMinutes();
+    const dataAtual = agoraBrasilia.toISOString().split('T')[0];
+    
+    // Converter horário HH:MM para minutos desde meia-noite
+    const minutoAtualTotal = horaAtual * 60 + minutoAtual;
+    const minutoLimite = minutoAtualTotal - 60; // 60 minutos atrás
+    
     const insercoesFiltradas = insercoes.filter((ins, idx) => {
+        // Validar dados completos
         const valido = ins.stationName && ins.hour && ins.city;
         if (!valido) {
             console.warn(`⚠️ Inserção ${idx} incompleta:`, ins);
+            return false;
         }
-        return valido;
+        
+        // 🔥 FILTRO TEMPORAL: Converter hora da inserção para minutos
+        const [horaStr, minStr] = ins.hour.split(':');
+        const minutoInsercao = parseInt(horaStr) * 60 + parseInt(minStr);
+        
+        // Se dentro de 1 hora, manter
+        if (minutoInsercao >= minutoLimite && minutoInsercao <= minutoAtualTotal) {
+            return true;
+        }
+        
+        // Se ultrapassou meia-noite (minuto negativo), considerar do dia anterior
+        if (minutoLimite < 0 && minutoInsercao >= (1440 + minutoLimite)) {
+            return true;
+        }
+        
+        return false;
     });
 
-    console.log(`   ✅ Após filtro de validação: ${insercoesFiltradas.length} inserções válidas`);
+    console.log(`   ✅ Após filtro de validação + 1 hora: ${insercoesFiltradas.length}/${insercoes.length} inserções válidas`);
 
     if (insercoesFiltradas.length === 0) {
         console.error('❌ Nenhuma inserção com dados completos!');
