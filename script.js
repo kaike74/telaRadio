@@ -165,6 +165,7 @@ function verificarFilaAgendamento() {
         console.log(`🎯 Liberando ${insercoesProntas.length} inserções da fila`);
         renderizarListaInsercoes(insercoesProntas);
         atualizarTicker({ insercoesRecentes: insercoesProntas });
+        atualizarAnimacoes(insercoesProntas);
     }
 }
 
@@ -338,8 +339,12 @@ function renderizarDashboard(data) {
         renderizarGraficoCidades(data.metricas.topCidadesComMaiorNumeroEmissoras || []);
     }
 
-    // Lista de inserções
-    renderizarListaInsercoes(data.insercoesRecentes || []);
+    // ⭐ NOVO: Adicionar inserções recentes à fila em vez de renderizar direto
+    // Assim respeitamos o sistema de agendamento e não fazemos bulk render
+    if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
+        console.log(`📌 Adicionando ${data.insercoesRecentes.length} inserções à fila durante carga inicial`);
+        adicionarNaFila(data.insercoesRecentes);
+    }
 
     console.log('✅ Dashboard renderizado');
 }
