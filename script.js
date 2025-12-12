@@ -364,10 +364,19 @@ function atualizarMetricasComDeteccao(novasMetricas) {
     let houveAlteracao = false;
     const alteracoes = [];
     
+    // 🔴 GARANTIA DE MONOTONICITY: Valores NUNCA diminuem
+    // Se um novo valor é menor que o anterior, ignora e mantém o anterior
+    
     // Verificar campanhas
-    if (novasMetricas.campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
+    let campanhasAtivas = novasMetricas.campanhasAtivas;
+    if (metricasAnteriores.campanhasAtivas !== null && campanhasAtivas < metricasAnteriores.campanhasAtivas) {
+        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Campanhas ${campanhasAtivas} < ${metricasAnteriores.campanhasAtivas} - IGNORADO`);
+        campanhasAtivas = metricasAnteriores.campanhasAtivas;
+    }
+    
+    if (campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
         const anterior = metricasAnteriores.campanhasAtivas;
-        const novo = novasMetricas.campanhasAtivas;
+        const novo = campanhasAtivas;
         houveAlteracao = true;
         
         if (anterior !== null) {
@@ -382,9 +391,15 @@ function atualizarMetricasComDeteccao(novasMetricas) {
     }
     
     // Verificar rádios ativas
-    if (novasMetricas.emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
+    let emissorasAtivas = novasMetricas.emissorasAtivas;
+    if (metricasAnteriores.emissorasAtivas !== null && emissorasAtivas < metricasAnteriores.emissorasAtivas) {
+        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Rádios ${emissorasAtivas} < ${metricasAnteriores.emissorasAtivas} - IGNORADO`);
+        emissorasAtivas = metricasAnteriores.emissorasAtivas;
+    }
+    
+    if (emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
         const anterior = metricasAnteriores.emissorasAtivas;
-        const novo = novasMetricas.emissorasAtivas;
+        const novo = emissorasAtivas;
         houveAlteracao = true;
         
         if (anterior !== null) {
@@ -399,9 +414,15 @@ function atualizarMetricasComDeteccao(novasMetricas) {
     }
     
     // Verificar inserções HOJE
-    if (novasMetricas.insercoesHoje !== metricasAnteriores.insercoesHoje) {
+    let insercoesHoje = novasMetricas.insercoesHoje;
+    if (metricasAnteriores.insercoesHoje !== null && insercoesHoje < metricasAnteriores.insercoesHoje) {
+        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Inserções ${insercoesHoje} < ${metricasAnteriores.insercoesHoje} - IGNORADO`);
+        insercoesHoje = metricasAnteriores.insercoesHoje;
+    }
+    
+    if (insercoesHoje !== metricasAnteriores.insercoesHoje) {
         const anterior = metricasAnteriores.insercoesHoje;
-        const novo = novasMetricas.insercoesHoje;
+        const novo = insercoesHoje;
         houveAlteracao = true;
         
         if (anterior !== null) {

@@ -520,7 +520,106 @@ function renderizarDashboard(data) {
 // =========================
 // DETECÇÃO DE MUDANÇAS - MÉTRICAS
 // =========================
-// 🔴 ATUALIZAÇÃO A CADA 90 SEGUNDOS
+
+/**
+ * Atualiza as métricas e DETECTA quando cada uma muda
+ * Loga quais métricas sofreram alteração e qual foi a diferença
+ * 🔴 GARANTIA DE MONOTONICITY: Valores NUNCA diminuem
+ */
+function atualizarMetricasComDeteccao(novasMetricas) {
+    const agora = new Date();
+    const horaFormatada = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}:${String(agora.getSeconds()).padStart(2, '0')}`;
+    
+    let houveAlteracao = false;
+    const alteracoes = [];
+    
+    // 🔴 GARANTIA DE MONOTONICITY: Valores NUNCA diminuem
+    // Se um novo valor é menor que o anterior, ignora e mantém o anterior
+    
+    // Verificar campanhas
+    let campanhasAtivas = novasMetricas.campanhasAtivas;
+    if (metricasAnteriores.campanhasAtivas !== null && campanhasAtivas < metricasAnteriores.campanhasAtivas) {
+        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Campanhas ${campanhasAtivas} < ${metricasAnteriores.campanhasAtivas} - IGNORADO`);
+        campanhasAtivas = metricasAnteriores.campanhasAtivas;
+    }
+    
+    if (campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
+        const anterior = metricasAnteriores.campanhasAtivas;
+        const novo = campanhasAtivas;
+        houveAlteracao = true;
+        
+        if (anterior !== null) {
+            const diferenca = novo - anterior;
+            const sinal = diferenca > 0 ? '+' : '';
+            alteracoes.push(`📢 Campanhas: ${anterior} → ${novo} (${sinal}${diferenca})`);
+        }
+        
+        const elemCampanhas = document.getElementById('metrica-campanhas');
+        if (elemCampanhas) elemCampanhas.textContent = novo;
+        metricasAnteriores.campanhasAtivas = novo;
+    }
+    
+    // Verificar rádios ativas
+    let emissorasAtivas = novasMetricas.emissorasAtivas;
+    if (metricasAnteriores.emissorasAtivas !== null && emissorasAtivas < metricasAnteriores.emissorasAtivas) {
+        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Rádios ${emissorasAtivas} < ${metricasAnteriores.emissorasAtivas} - IGNORADO`);
+        emissorasAtivas = metricasAnteriores.emissorasAtivas;
+    }
+    
+    if (emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
+        const anterior = metricasAnteriores.emissorasAtivas;
+        const novo = emissorasAtivas;
+        houveAlteracao = true;
+        
+        if (anterior !== null) {
+            const diferenca = novo - anterior;
+            const sinal = diferenca > 0 ? '+' : '';
+            alteracoes.push(`📻 Rádios: ${anterior} → ${novo} (${sinal}${diferenca})`);
+        }
+        
+        const elemRadios = document.getElementById('metrica-radios');
+        if (elemRadios) elemRadios.textContent = novo;
+        metricasAnteriores.emissorasAtivas = novo;
+    }
+    
+    // Verificar inserções HOJE
+    let insercoesHoje = novasMetricas.insercoesHoje;
+    if (metricasAnteriores.insercoesHoje !== null && insercoesHoje < metricasAnteriores.insercoesHoje) {
+        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Inserções ${insercoesHoje} < ${metricasAnteriores.insercoesHoje} - IGNORADO`);
+        insercoesHoje = metricasAnteriores.insercoesHoje;
+    }
+    
+    if (insercoesHoje !== metricasAnteriores.insercoesHoje) {
+        const anterior = metricasAnteriores.insercoesHoje;
+        const novo = insercoesHoje;
+        houveAlteracao = true;
+        
+        if (anterior !== null) {
+            const diferenca = novo - anterior;
+            const sinal = diferenca > 0 ? '+' : '';
+            alteracoes.push(`📊 INSERÇÕES HOJE: ${anterior} → ${novo} (${sinal}${diferenca})`);
+            
+            // 🎯 LOG DETALHADO QUANDO INSERÇÕES MUDAM
+            console.warn(`%c⚡ ${horaFormatada} - MUDANÇA EM INSERÇÕES HOJE`, 'color: #ff6b6b; font-weight: bold; font-size: 14px;');
+            console.log(`   Anterior: ${anterior}`);
+            console.log(`   Novo:     ${novo}`);
+            console.log(`   Diferença: ${sinal}${diferenca} inserções`);
+        }
+        
+        const elemInsercoes = document.getElementById('metrica-insercoes');
+        if (elemInsercoes) elemInsercoes.textContent = novo;
+        metricasAnteriores.insercoesHoje = novo;
+    }
+    
+    // Logar mudanças detectadas
+    if (houveAlteracao && alteracoes.length > 0) {
+        console.log(`%c${horaFormatada} - ALTERAÇÕES DETECTADAS`, 'color: #4ecdc4; font-weight: bold;');
+        alteracoes.forEach(alt => console.log(`   ${alt}`));
+    }
+}
+
+// =========================
+// ATUALIZAÇÃO A CADA 90 SEGUNDOS
 // =========================
 
 // =========================
