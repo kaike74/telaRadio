@@ -1319,7 +1319,7 @@ function mostrarErro(mensagem) {
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     console.warn('⚠️ MODO DESENVOLVIMENTO - Usando dados mock');
 
-    CONFIG.API_BASE = 'https://dashboard-radio-worker.seu-usuario.workers.dev';
+    CONFIG.API_BASE = 'https://dashboard-radio-worker.kaike-458.workers.dev';
 
     // Descomentar para testar com dados fake:
     /*
