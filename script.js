@@ -68,6 +68,83 @@ let metricasAnteriores = {
 // 🔴 INTERVALO DE ATUALIZAÇÃO DE MÉTRICAS
 let intervaloAtualizacaoMetricas = null;
 
+// 🎯 FILA DE AGENDAMENTO: Inserções aguardam 1 hora para serem exibidas
+// { insercao: {...}, tempoAgendado: timestamp }
+let filaAgendamento = [];
+
+// 🔄 Verificar fila a cada 10 segundos
+let intervaloVerificacaoFila = null;
+
+/**
+ * 🎯 Converter hora "HH:MM" para timestamp da próxima ocorrência
+ * Exemplo: "12:55:23" → agora + 1 hora
+ */
+function calcularTempoAgendamento(horaInsercao) {
+    const [hStr, mStr] = horaInsercao.split(':');
+    const horaOrigem = parseInt(hStr);
+    const minutoOrigem = parseInt(mStr);
+    
+    const agora = new Date();
+    const offsetBrasilia = -3 * 60;
+    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
+    
+    // Criar data para 1 hora depois
+    const tempoAgendado = new Date(agoraBrasilia);
+    tempoAgendado.setHours(tempoAgendado.getHours() + 1);
+    
+    return tempoAgendado.getTime();
+}
+
+/**
+ * 🎯 Adicionar inserção à fila de agendamento
+ */
+function adicionarNaFila(insercoes) {
+    if (!Array.isArray(insercoes)) {
+        console.warn('⚠️ adicionarNaFila recebeu não-array:', typeof insercoes);
+        return;
+    }
+    
+    insercoes.forEach(insercao => {
+        const tempoAgendado = calcularTempoAgendamento(insercao.hour);
+        filaAgendamento.push({
+            insercao: insercao,
+            tempoAgendado: tempoAgendado,
+            adicionadoEm: Date.now()
+        });
+    });
+    
+    console.log(`📋 Fila de agendamento: ${filaAgendamento.length} inserções aguardando`);
+}
+
+/**
+ * 🎯 Verificar fila e exibir inserções prontas
+ */
+function verificarFilaAgendamento() {
+    const agora = Date.now();
+    const insercoesProntas = [];
+    const filaAtualizada = [];
+    
+    filaAgendamento.forEach(item => {
+        if (agora >= item.tempoAgendado) {
+            // ✅ Inserção pronta para exibir
+            insercoesProntas.push(item.insercao);
+            console.log(`✨ Inserção liberada da fila: ${item.insercao.stationName} (${item.insercao.hour})`);
+        } else {
+            // ⏳ Ainda aguardando
+            const minutosFaltando = Math.ceil((item.tempoAgendado - agora) / 1000 / 60);
+            filaAtualizada.push(item);
+        }
+    });
+    
+    filaAgendamento = filaAtualizada;
+    
+    // Se há inserções prontas, renderizar
+    if (insercoesProntas.length > 0) {
+        console.log(`🎯 Liberando ${insercoesProntas.length} inserções da fila`);
+        renderizarListaInsercoes(insercoesProntas);
+        atualizarTicker({ insercoesRecentes: insercoesProntas });
+    }
+}
 
 // =========================
 // INICIALIZAÇÃO
@@ -93,6 +170,9 @@ async function iniciarCicloAtualizacao() {
     console.log('📊 Buscando dados iniciais...');
     await buscarDashboardCompleto();
     
+    // 🎯 Iniciar verificação de fila (a cada 10 segundos)
+    intervaloVerificacaoFila = setInterval(verificarFilaAgendamento, 10000);
+    
     // Iniciar ciclo infinito
     cicloAtualizacaoRecorrente();
 }
@@ -100,7 +180,7 @@ async function iniciarCicloAtualizacao() {
 /**
  * 🔴 CICLO RECORRENTE: Atualiza a cada 5 segundos de forma serializada
  * - Busca dados do API
- * - Renderiza TUDO de uma vez
+ * - AGENDA inserções para exibição (1 hora depois)
  * - Aguarda 5s
  * - Repete
  */
@@ -109,15 +189,15 @@ async function cicloAtualizacaoRecorrente() {
         // ⏱️ Intervalo: 5 segundos (inserções recentes)
         await aguardar(5000);
         
-        // 📊 Buscar inserções recentes (buscar dados apenas, não renderizar)
+        // 📊 Buscar inserções recentes
         const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
         if (response.ok) {
             const data = await response.json();
             
-            // Renderizar TUDO DE UMA VEZ (batch rendering)
-            if (data.success && data.insercoesRecentes) {
-                renderizarListaInsercoes(data.insercoesRecentes);
-                atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
+            // 🎯 NOVO: Adicionar à fila de agendamento ao invés de renderizar direto
+            if (data.success && data.insercoesRecentes && data.insercoesRecentes.length > 0) {
+                adicionarNaFila(data.insercoesRecentes);
+                console.log(`📥 ${data.insercoesRecentes.length} inserções adicionadas à fila de agendamento`);
             }
         }
         
@@ -481,44 +561,16 @@ function renderizarListaInsercoes(insercoes) {
         return;
     }
     
-    // 🔥 FILTRO DE 1 HORA: Manter apenas inserções dos últimos 60 minutos
-    const agora = new Date();
-    const offsetBrasilia = -3 * 60;
-    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-    const horaAtual = agoraBrasilia.getHours();
-    const minutoAtual = agoraBrasilia.getMinutes();
-    const dataAtual = agoraBrasilia.toISOString().split('T')[0];
-    
-    // Converter horário HH:MM para minutos desde meia-noite
-    const minutoAtualTotal = horaAtual * 60 + minutoAtual;
-    const minutoLimite = minutoAtualTotal - 60; // 60 minutos atrás
-    
+    // Validar e filtrar inserções com dados completos
     const insercoesFiltradas = insercoes.filter((ins, idx) => {
-        // Validar dados completos
         const valido = ins.stationName && ins.hour && ins.city;
         if (!valido) {
             console.warn(`⚠️ Inserção ${idx} incompleta:`, ins);
-            return false;
         }
-        
-        // 🔥 FILTRO TEMPORAL: Converter hora da inserção para minutos
-        const [horaStr, minStr] = ins.hour.split(':');
-        const minutoInsercao = parseInt(horaStr) * 60 + parseInt(minStr);
-        
-        // Se dentro de 1 hora, manter
-        if (minutoInsercao >= minutoLimite && minutoInsercao <= minutoAtualTotal) {
-            return true;
-        }
-        
-        // Se ultrapassou meia-noite (minuto negativo), considerar do dia anterior
-        if (minutoLimite < 0 && minutoInsercao >= (1440 + minutoLimite)) {
-            return true;
-        }
-        
-        return false;
+        return valido;
     });
 
-    console.log(`   ✅ Após filtro de validação + 1 hora: ${insercoesFiltradas.length}/${insercoes.length} inserções válidas`);
+    console.log(`   ✅ Após filtro de validação: ${insercoesFiltradas.length} inserções válidas`);
 
     if (insercoesFiltradas.length === 0) {
         console.error('❌ Nenhuma inserção com dados completos!');
