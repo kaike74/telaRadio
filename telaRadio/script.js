@@ -703,6 +703,91 @@ function criarPingaDoTicker(insercao, tickerId) {
     }
 }
 
+// ⭐ SISTEMA DE FILA PARA REQUISIÇÕES DE COORDENADAS
+// Evita explosion de requisições quando viewport fica muito aberto
+const filaRequisicaoCoordenadas = {
+    fila: [],
+    emProgress: 0,
+    MAX_SIMULTANEOUS: 2,
+    cacheLocal: new Map(),
+    
+    async adicionar(insercao, pingaId, tickerId) {
+        // Se já está em cache, usar direto
+        if (this.cacheLocal.has(insercao.city)) {
+            const cached = this.cacheLocal.get(insercao.city);
+            if (cached) {
+                await criarPingaComCoordenada(insercao, pingaId, cached);
+            }
+            return;
+        }
+        
+        // Adicionar à fila
+        this.fila.push({ insercao, pingaId, tickerId });
+        this.processar();
+    },
+    
+    async processar() {
+        // Se já tem muitas requisições em progresso, aguardar
+        if (this.emProgress >= this.MAX_SIMULTANEOUS || this.fila.length === 0) {
+            return;
+        }
+        
+        // Pegar próximo da fila
+        const { insercao, pingaId, tickerId } = this.fila.shift();
+        this.emProgress++;
+        
+        try {
+            // Fetch com timeout de 10 segundos
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            const response = await fetch(
+                `${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(insercao.city)}`,
+                { signal: controller.signal }
+            );
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                LoggerOtimizado.aviso(`Não foi possível buscar coordenada para ${insercao.city}`);
+                this.emProgress--;
+                this.processar();
+                return;
+            }
+
+            const data = await response.json();
+            
+            if (!data.sucesso || !data.coordenada) {
+                LoggerOtimizado.log(`Coordenada não encontrada: ${insercao.city}`, 'coordenadas-miss');
+                this.emProgress--;
+                this.processar();
+                return;
+            }
+
+            const coordenada = data.coordenada;
+            
+            // Cachear para próximas vezes
+            this.cacheLocal.set(insercao.city, coordenada);
+            
+            LoggerOtimizado.log(`Coordenada encontrada: ${insercao.city}`, 'coordenadas-hit');
+            
+            // Criar o pinga com a coordenada
+            await criarPingaComCoordenada(insercao, pingaId, coordenada);
+            
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                LoggerOtimizado.aviso(`Timeout buscando ${insercao.city}`);
+            } else {
+                LoggerOtimizado.erro(`Erro buscando coordenada: ${error.message}`);
+            }
+        } finally {
+            this.emProgress--;
+            // Continuar processando fila
+            setTimeout(() => this.processar(), 100);
+        }
+    }
+};
+
 /**
  * Buscar coordenada de uma cidade e criar o pinga correspondente
  * @param {Object} insercao - Dados da inserção
@@ -710,25 +795,12 @@ function criarPingaDoTicker(insercao, tickerId) {
  * @param {string} tickerId - ID do item do ticker
  */
 async function buscarCoordenadaECriarPinga(insercao, pingaId, tickerId) {
+    // Adicionar à fila em vez de fazer requisição direta
+    filaRequisicaoCoordenadas.adicionar(insercao, pingaId, tickerId);
+}
+
+async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
     try {
-        // Buscar coordenada do backend
-        const response = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(insercao.city)}`);
-        
-        if (!response.ok) {
-            LoggerOtimizado.aviso(`Não foi possível buscar coordenada para ${insercao.city}`);
-            return;
-        }
-
-        const data = await response.json();
-        
-        if (!data.sucesso || !data.coordenada) {
-            LoggerOtimizado.log(`Coordenada não encontrada: ${insercao.city}`, 'coordenadas-miss');
-            return;
-        }
-
-        const coordenada = data.coordenada;
-        LoggerOtimizado.log(`Coordenada encontrada: ${insercao.city}`, 'coordenadas-hit');
-
         // Criar animação com os dados da insercão e coordenada
         const animacao = {
             id: pingaId,
