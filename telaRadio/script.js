@@ -139,13 +139,6 @@ let metricasAnteriores = {
 // 🔴 INTERVALO DE ATUALIZAÇÃO DE MÉTRICAS
 let intervaloAtualizacaoMetricas = null;
 
-// 🎯 FILA DE AGENDAMENTO: Inserções aguardam 1 hora para serem exibidas
-// { insercao: {...}, tempoAgendado: timestamp }
-let filaAgendamento = [];
-
-// 🔄 Verificar fila a cada 10 segundos
-let intervaloVerificacaoFila = null;
-
 // 🔧 DEBUG - Ferramentas de diagnóstico
 window.DEBUG = {
     ativar: () => {
@@ -248,100 +241,6 @@ window.DEBUG = {
 // INICIALIZAÇÃO
 // =========================
 
-/**
- * 🎯 Converter hora "HH:MM" para timestamp de agendamento
- * Exemplo: inserção em "12:55:23" → será exibida em "13:55:23"
- * A hora é agendada para +1 hora da INSERÇÃO, não da hora atual
- */
-function calcularTempoAgendamento(horaInsercao) {
-    const [hStr, mStr] = horaInsercao.split(':');
-    const horaInsercaoNum = parseInt(hStr);
-    const minutoInsercaoNum = parseInt(mStr);
-    
-    // Hora agendada = hora da inserção + 1 hora
-    let horaAgendada = horaInsercaoNum + 1;
-    let minutoAgendado = minutoInsercaoNum;
-    
-    // Se passou de 24h, volta para 0
-    if (horaAgendada >= 24) {
-        horaAgendada = horaAgendada - 24;
-    }
-    
-    // Criar data para a hora agendada (hoje)
-    const agora = new Date();
-    const offsetBrasilia = -3 * 60;
-    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-    
-    // Pegar a data de hoje (Brasília)
-    const dataHoje = new Date(agoraBrasilia);
-    dataHoje.setHours(horaAgendada, minutoAgendado, 0, 0);
-    
-    // Se a hora agendada já passou hoje, agendar para amanhã
-    if (dataHoje < agoraBrasilia) {
-        dataHoje.setDate(dataHoje.getDate() + 1);
-    }
-    
-    return dataHoje.getTime();
-}
-
-/**
- * 🎯 Adicionar inserção à fila de agendamento
- */
-function adicionarNaFila(insercoes) {
-    if (!Array.isArray(insercoes)) {
-        console.warn('⚠️ adicionarNaFila recebeu não-array:', typeof insercoes);
-        return;
-    }
-    
-    insercoes.forEach(insercao => {
-        const tempoAgendado = calcularTempoAgendamento(insercao.hour);
-        const dataAgendada = new Date(tempoAgendado);
-        const horaAgendada = String(dataAgendada.getHours()).padStart(2, '0') + ':' + 
-                            String(dataAgendada.getMinutes()).padStart(2, '0');
-        
-        filaAgendamento.push({
-            insercao: insercao,
-            tempoAgendado: tempoAgendado,
-            adicionadoEm: Date.now()
-        });
-        
-        console.log(`⏰ ${insercao.hour} → agendada para ${horaAgendada} (${insercao.stationName})`);
-    });
-    
-    console.log(`📋 Fila total: ${filaAgendamento.length} inserções aguardando`);
-}
-
-/**
- * 🎯 Verificar fila e exibir inserções prontas
- */
-function verificarFilaAgendamento() {
-    const agora = Date.now();
-    const insercoesProntas = [];
-    const filaAtualizada = [];
-    
-    filaAgendamento.forEach(item => {
-        if (agora >= item.tempoAgendado) {
-            // ✅ Inserção pronta para exibir
-            insercoesProntas.push(item.insercao);
-            console.log(`✨ Inserção liberada da fila: ${item.insercao.stationName} (${item.insercao.hour})`);
-        } else {
-            // ⏳ Ainda aguardando
-            const minutosFaltando = Math.ceil((item.tempoAgendado - agora) / 1000 / 60);
-            filaAtualizada.push(item);
-        }
-    });
-    
-    filaAgendamento = filaAtualizada;
-    
-    // Se há inserções prontas, renderizar
-    if (insercoesProntas.length > 0) {
-        console.log(`🎯 Liberando ${insercoesProntas.length} inserções da fila`);
-        renderizarListaInsercoes(insercoesProntas);
-        atualizarTicker({ insercoesRecentes: insercoesProntas });
-        atualizarAnimacoes(insercoesProntas);
-    }
-}
-
 document.addEventListener('DOMContentLoaded', () => {
     // Inicializar mapa
     inicializarMapa();
@@ -362,9 +261,6 @@ async function iniciarCicloAtualizacao() {
         // Primeira carga completa
         await buscarDashboardCompleto();
         console.log('✅ Dashboard inicial carregado');
-        
-        // 🎯 Iniciar verificação de fila (a cada 10 segundos)
-        intervaloVerificacaoFila = setInterval(verificarFilaAgendamento, 10000);
         
         // Inicia o ciclo de atualização serializado (sem race conditions)
         cicloAtualizacaoRecorrente();
@@ -391,10 +287,9 @@ async function cicloAtualizacaoRecorrente() {
             const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
             if (response.ok) {
                 const data = await response.json();
-                // 🎯 NOVO: Adicionar à fila de agendamento ao invés de renderizar direto
-                if (data.success && data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                    adicionarNaFila(data.insercoesRecentes);
-                    console.log(`📥 ${data.insercoesRecentes.length} inserções adicionadas à fila de agendamento`);
+                if (data.success && data.insercoesRecentes) {
+                    renderizarListaInsercoes(data.insercoesRecentes);
+                    atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
                 }
             }
         } catch (erro) {
@@ -512,12 +407,8 @@ function renderizarDashboard(data) {
         renderizarGraficoCidades(data.metricas.topCidadesComMaiorNumeroEmissoras || []);
     }
 
-    // ⭐ NOVO: Adicionar inserções recentes à fila em vez de renderizar direto
-    // Assim respeitamos o sistema de agendamento e não fazemos bulk render
-    if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-        console.log(`📌 Adicionando ${data.insercoesRecentes.length} inserções à fila durante carga inicial`);
-        adicionarNaFila(data.insercoesRecentes);
-    }
+    // Lista de inserções
+    renderizarListaInsercoes(data.insercoesRecentes || []);
 
     console.log('✅ Dashboard renderizado');
 }
@@ -525,106 +416,7 @@ function renderizarDashboard(data) {
 // =========================
 // DETECÇÃO DE MUDANÇAS - MÉTRICAS
 // =========================
-
-/**
- * Atualiza as métricas e DETECTA quando cada uma muda
- * Loga quais métricas sofreram alteração e qual foi a diferença
- * 🔴 GARANTIA DE MONOTONICITY: Valores NUNCA diminuem
- */
-function atualizarMetricasComDeteccao(novasMetricas) {
-    const agora = new Date();
-    const horaFormatada = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}:${String(agora.getSeconds()).padStart(2, '0')}`;
-    
-    let houveAlteracao = false;
-    const alteracoes = [];
-    
-    // 🔴 GARANTIA DE MONOTONICITY: Valores NUNCA diminuem
-    // Se um novo valor é menor que o anterior, ignora e mantém o anterior
-    
-    // Verificar campanhas
-    let campanhasAtivas = novasMetricas.campanhasAtivas;
-    if (metricasAnteriores.campanhasAtivas !== null && campanhasAtivas < metricasAnteriores.campanhasAtivas) {
-        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Campanhas ${campanhasAtivas} < ${metricasAnteriores.campanhasAtivas} - IGNORADO`);
-        campanhasAtivas = metricasAnteriores.campanhasAtivas;
-    }
-    
-    if (campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
-        const anterior = metricasAnteriores.campanhasAtivas;
-        const novo = campanhasAtivas;
-        houveAlteracao = true;
-        
-        if (anterior !== null) {
-            const diferenca = novo - anterior;
-            const sinal = diferenca > 0 ? '+' : '';
-            alteracoes.push(`📢 Campanhas: ${anterior} → ${novo} (${sinal}${diferenca})`);
-        }
-        
-        const elemCampanhas = document.getElementById('metrica-campanhas');
-        if (elemCampanhas) elemCampanhas.textContent = novo;
-        metricasAnteriores.campanhasAtivas = novo;
-    }
-    
-    // Verificar rádios ativas
-    let emissorasAtivas = novasMetricas.emissorasAtivas;
-    if (metricasAnteriores.emissorasAtivas !== null && emissorasAtivas < metricasAnteriores.emissorasAtivas) {
-        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Rádios ${emissorasAtivas} < ${metricasAnteriores.emissorasAtivas} - IGNORADO`);
-        emissorasAtivas = metricasAnteriores.emissorasAtivas;
-    }
-    
-    if (emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
-        const anterior = metricasAnteriores.emissorasAtivas;
-        const novo = emissorasAtivas;
-        houveAlteracao = true;
-        
-        if (anterior !== null) {
-            const diferenca = novo - anterior;
-            const sinal = diferenca > 0 ? '+' : '';
-            alteracoes.push(`📻 Rádios: ${anterior} → ${novo} (${sinal}${diferenca})`);
-        }
-        
-        const elemRadios = document.getElementById('metrica-radios');
-        if (elemRadios) elemRadios.textContent = novo;
-        metricasAnteriores.emissorasAtivas = novo;
-    }
-    
-    // Verificar inserções HOJE
-    let insercoesHoje = novasMetricas.insercoesHoje;
-    if (metricasAnteriores.insercoesHoje !== null && insercoesHoje < metricasAnteriores.insercoesHoje) {
-        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Inserções ${insercoesHoje} < ${metricasAnteriores.insercoesHoje} - IGNORADO`);
-        insercoesHoje = metricasAnteriores.insercoesHoje;
-    }
-    
-    if (insercoesHoje !== metricasAnteriores.insercoesHoje) {
-        const anterior = metricasAnteriores.insercoesHoje;
-        const novo = insercoesHoje;
-        houveAlteracao = true;
-        
-        if (anterior !== null) {
-            const diferenca = novo - anterior;
-            const sinal = diferenca > 0 ? '+' : '';
-            alteracoes.push(`📊 INSERÇÕES HOJE: ${anterior} → ${novo} (${sinal}${diferenca})`);
-            
-            // 🎯 LOG DETALHADO QUANDO INSERÇÕES MUDAM
-            console.warn(`%c⚡ ${horaFormatada} - MUDANÇA EM INSERÇÕES HOJE`, 'color: #ff6b6b; font-weight: bold; font-size: 14px;');
-            console.log(`   Anterior: ${anterior}`);
-            console.log(`   Novo:     ${novo}`);
-            console.log(`   Diferença: ${sinal}${diferenca} inserções`);
-        }
-        
-        const elemInsercoes = document.getElementById('metrica-insercoes');
-        if (elemInsercoes) elemInsercoes.textContent = novo;
-        metricasAnteriores.insercoesHoje = novo;
-    }
-    
-    // Logar mudanças detectadas
-    if (houveAlteracao && alteracoes.length > 0) {
-        console.log(`%c${horaFormatada} - ALTERAÇÕES DETECTADAS`, 'color: #4ecdc4; font-weight: bold;');
-        alteracoes.forEach(alt => console.log(`   ${alt}`));
-    }
-}
-
-// =========================
-// ATUALIZAÇÃO A CADA 90 SEGUNDOS
+// 🔴 ATUALIZAÇÃO A CADA 90 SEGUNDOS
 // =========================
 
 // =========================
@@ -785,9 +577,8 @@ function renderizarListaInsercoes(insercoes) {
         const valido = ins.stationName && ins.hour && ins.city;
         if (!valido) {
             console.warn(`⚠️ Inserção ${idx} incompleta:`, ins);
-            return false;
         }
-        return true;
+        return valido;
     });
 
     if (insercoesFiltradas.length === 0) {
@@ -1319,7 +1110,7 @@ function mostrarErro(mensagem) {
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     console.warn('⚠️ MODO DESENVOLVIMENTO - Usando dados mock');
 
-    CONFIG.API_BASE = 'https://dashboard-radio-worker.kaike-458.workers.dev';
+    CONFIG.API_BASE = 'https://dashboard-radio-worker.seu-usuario.workers.dev';
 
     // Descomentar para testar com dados fake:
     /*

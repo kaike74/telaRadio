@@ -68,106 +68,6 @@ let metricasAnteriores = {
 // 🔴 INTERVALO DE ATUALIZAÇÃO DE MÉTRICAS
 let intervaloAtualizacaoMetricas = null;
 
-// 🎯 FILA DE AGENDAMENTO: Inserções aguardam 1 hora para serem exibidas
-// { insercao: {...}, tempoAgendado: timestamp }
-let filaAgendamento = [];
-
-// 🔄 Verificar fila a cada 10 segundos
-let intervaloVerificacaoFila = null;
-
-/**
- * 🎯 Converter hora "HH:MM" para timestamp de agendamento
- * Exemplo: inserção em "12:55:23" → será exibida em "13:55:23"
- * A hora é agendada para +1 hora da INSERÇÃO, não da hora atual
- */
-function calcularTempoAgendamento(horaInsercao) {
-    const [hStr, mStr] = horaInsercao.split(':');
-    const horaInsercaoNum = parseInt(hStr);
-    const minutoInsercaoNum = parseInt(mStr);
-    
-    // Hora agendada = hora da inserção + 1 hora
-    let horaAgendada = horaInsercaoNum + 1;
-    let minutoAgendado = minutoInsercaoNum;
-    
-    // Se passou de 24h, volta para 0
-    if (horaAgendada >= 24) {
-        horaAgendada = horaAgendada - 24;
-    }
-    
-    // Criar data para a hora agendada (hoje)
-    const agora = new Date();
-    const offsetBrasilia = -3 * 60;
-    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-    
-    // Pegar a data de hoje (Brasília)
-    const dataHoje = new Date(agoraBrasilia);
-    dataHoje.setHours(horaAgendada, minutoAgendado, 0, 0);
-    
-    // Se a hora agendada já passou hoje, agendar para amanhã
-    if (dataHoje < agoraBrasilia) {
-        dataHoje.setDate(dataHoje.getDate() + 1);
-    }
-    
-    return dataHoje.getTime();
-}
-
-/**
- * 🎯 Adicionar inserção à fila de agendamento
- */
-function adicionarNaFila(insercoes) {
-    if (!Array.isArray(insercoes)) {
-        console.warn('⚠️ adicionarNaFila recebeu não-array:', typeof insercoes);
-        return;
-    }
-    
-    insercoes.forEach(insercao => {
-        const tempoAgendado = calcularTempoAgendamento(insercao.hour);
-        const dataAgendada = new Date(tempoAgendado);
-        const horaAgendada = String(dataAgendada.getHours()).padStart(2, '0') + ':' + 
-                            String(dataAgendada.getMinutes()).padStart(2, '0');
-        
-        filaAgendamento.push({
-            insercao: insercao,
-            tempoAgendado: tempoAgendado,
-            adicionadoEm: Date.now()
-        });
-        
-        console.log(`⏰ ${insercao.hour} → agendada para ${horaAgendada} (${insercao.stationName})`);
-    });
-    
-    console.log(`📋 Fila total: ${filaAgendamento.length} inserções aguardando`);
-}
-
-/**
- * 🎯 Verificar fila e exibir inserções prontas
- */
-function verificarFilaAgendamento() {
-    const agora = Date.now();
-    const insercoesProntas = [];
-    const filaAtualizada = [];
-    
-    filaAgendamento.forEach(item => {
-        if (agora >= item.tempoAgendado) {
-            // ✅ Inserção pronta para exibir
-            insercoesProntas.push(item.insercao);
-            console.log(`✨ Inserção liberada da fila: ${item.insercao.stationName} (${item.insercao.hour})`);
-        } else {
-            // ⏳ Ainda aguardando
-            const minutosFaltando = Math.ceil((item.tempoAgendado - agora) / 1000 / 60);
-            filaAtualizada.push(item);
-        }
-    });
-    
-    filaAgendamento = filaAtualizada;
-    
-    // Se há inserções prontas, renderizar
-    if (insercoesProntas.length > 0) {
-        console.log(`🎯 Liberando ${insercoesProntas.length} inserções da fila`);
-        renderizarListaInsercoes(insercoesProntas);
-        atualizarTicker({ insercoesRecentes: insercoesProntas });
-        atualizarAnimacoes(insercoesProntas);
-    }
-}
 
 // =========================
 // INICIALIZAÇÃO
@@ -193,9 +93,6 @@ async function iniciarCicloAtualizacao() {
     console.log('📊 Buscando dados iniciais...');
     await buscarDashboardCompleto();
     
-    // 🎯 Iniciar verificação de fila (a cada 10 segundos)
-    intervaloVerificacaoFila = setInterval(verificarFilaAgendamento, 10000);
-    
     // Iniciar ciclo infinito
     cicloAtualizacaoRecorrente();
 }
@@ -203,7 +100,7 @@ async function iniciarCicloAtualizacao() {
 /**
  * 🔴 CICLO RECORRENTE: Atualiza a cada 5 segundos de forma serializada
  * - Busca dados do API
- * - AGENDA inserções para exibição (1 hora depois)
+ * - Renderiza TUDO de uma vez
  * - Aguarda 5s
  * - Repete
  */
@@ -212,15 +109,15 @@ async function cicloAtualizacaoRecorrente() {
         // ⏱️ Intervalo: 5 segundos (inserções recentes)
         await aguardar(5000);
         
-        // 📊 Buscar inserções recentes
+        // 📊 Buscar inserções recentes (buscar dados apenas, não renderizar)
         const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
         if (response.ok) {
             const data = await response.json();
             
-            // 🎯 NOVO: Adicionar à fila de agendamento ao invés de renderizar direto
-            if (data.success && data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-                adicionarNaFila(data.insercoesRecentes);
-                console.log(`📥 ${data.insercoesRecentes.length} inserções adicionadas à fila de agendamento`);
+            // Renderizar TUDO DE UMA VEZ (batch rendering)
+            if (data.success && data.insercoesRecentes) {
+                renderizarListaInsercoes(data.insercoesRecentes);
+                atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
             }
         }
         
@@ -339,12 +236,8 @@ function renderizarDashboard(data) {
         renderizarGraficoCidades(data.metricas.topCidadesComMaiorNumeroEmissoras || []);
     }
 
-    // ⭐ NOVO: Adicionar inserções recentes à fila em vez de renderizar direto
-    // Assim respeitamos o sistema de agendamento e não fazemos bulk render
-    if (data.insercoesRecentes && data.insercoesRecentes.length > 0) {
-        console.log(`📌 Adicionando ${data.insercoesRecentes.length} inserções à fila durante carga inicial`);
-        adicionarNaFila(data.insercoesRecentes);
-    }
+    // Lista de inserções
+    renderizarListaInsercoes(data.insercoesRecentes || []);
 
     console.log('✅ Dashboard renderizado');
 }
@@ -369,19 +262,10 @@ function atualizarMetricasComDeteccao(novasMetricas) {
     let houveAlteracao = false;
     const alteracoes = [];
     
-    // 🔴 GARANTIA DE MONOTONICITY: Valores NUNCA diminuem
-    // Se um novo valor é menor que o anterior, ignora e mantém o anterior
-    
     // Verificar campanhas
-    let campanhasAtivas = novasMetricas.campanhasAtivas;
-    if (metricasAnteriores.campanhasAtivas !== null && campanhasAtivas < metricasAnteriores.campanhasAtivas) {
-        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Campanhas ${campanhasAtivas} < ${metricasAnteriores.campanhasAtivas} - IGNORADO`);
-        campanhasAtivas = metricasAnteriores.campanhasAtivas;
-    }
-    
-    if (campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
+    if (novasMetricas.campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
         const anterior = metricasAnteriores.campanhasAtivas;
-        const novo = campanhasAtivas;
+        const novo = novasMetricas.campanhasAtivas;
         houveAlteracao = true;
         
         if (anterior !== null) {
@@ -396,15 +280,9 @@ function atualizarMetricasComDeteccao(novasMetricas) {
     }
     
     // Verificar rádios ativas
-    let emissorasAtivas = novasMetricas.emissorasAtivas;
-    if (metricasAnteriores.emissorasAtivas !== null && emissorasAtivas < metricasAnteriores.emissorasAtivas) {
-        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Rádios ${emissorasAtivas} < ${metricasAnteriores.emissorasAtivas} - IGNORADO`);
-        emissorasAtivas = metricasAnteriores.emissorasAtivas;
-    }
-    
-    if (emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
+    if (novasMetricas.emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
         const anterior = metricasAnteriores.emissorasAtivas;
-        const novo = emissorasAtivas;
+        const novo = novasMetricas.emissorasAtivas;
         houveAlteracao = true;
         
         if (anterior !== null) {
@@ -419,15 +297,9 @@ function atualizarMetricasComDeteccao(novasMetricas) {
     }
     
     // Verificar inserções HOJE
-    let insercoesHoje = novasMetricas.insercoesHoje;
-    if (metricasAnteriores.insercoesHoje !== null && insercoesHoje < metricasAnteriores.insercoesHoje) {
-        console.warn(`⚠️ TENTATIVA DE DIMINUIÇÃO: Inserções ${insercoesHoje} < ${metricasAnteriores.insercoesHoje} - IGNORADO`);
-        insercoesHoje = metricasAnteriores.insercoesHoje;
-    }
-    
-    if (insercoesHoje !== metricasAnteriores.insercoesHoje) {
+    if (novasMetricas.insercoesHoje !== metricasAnteriores.insercoesHoje) {
         const anterior = metricasAnteriores.insercoesHoje;
-        const novo = insercoesHoje;
+        const novo = novasMetricas.insercoesHoje;
         houveAlteracao = true;
         
         if (anterior !== null) {
@@ -1140,7 +1012,7 @@ function mostrarErro(mensagem) {
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     console.warn('⚠️ MODO DESENVOLVIMENTO - Usando dados mock');
 
-    CONFIG.API_BASE = 'https://dashboard-radio-worker.kaike-458.workers.dev';
+    CONFIG.API_BASE = 'https://dashboard-radio-worker.seu-usuario.workers.dev';
 
     // Descomentar para testar com dados fake:
     /*
