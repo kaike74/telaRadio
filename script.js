@@ -65,6 +65,11 @@ let metricasAnteriores = {
     insercoesHoje: null
 };
 
+// 🔧 VALIDAÇÃO DE TAMANHO DE DADOS - Evitar atualizar com dados incompletos
+// Se a chamada retorna MENOS dados que o estado atual, ignora a atualização
+let ultimoTamanoInsercoes = 0;
+let logValidacaoDados = [];
+
 // 🔴 INTERVALO DE ATUALIZAÇÃO DE MÉTRICAS
 let intervaloAtualizacaoMetricas = null;
 
@@ -117,17 +122,23 @@ async function cicloAtualizacaoRecorrente() {
         if (response.ok) {
             const data = await response.json();
             
-            // 🔍 LOG: Monitorar variação de inserções
-            const qtdInserc = data.insercoesRecentes?.length || 0;
-            if (!window._ultimaQtdInsercoes) window._ultimaQtdInsercoes = qtdInserc;
-            const variacao = qtdInserc !== window._ultimaQtdInsercoes ? ` ⚠️ VARIAÇÃO: ${window._ultimaQtdInsercoes} → ${qtdInserc}` : '';
-            console.log(`📊 /api/insercoes/recentes: ${qtdInserc} inserções${variacao}`, data.insercoesRecentes);
-            window._ultimaQtdInsercoes = qtdInserc;
-            
-            // Renderizar TUDO DE UMA VEZ (batch rendering)
+            // 🔍 VALIDAÇÃO: Verificar se quantidade de dados é confiável
             if (data.success && data.insercoesRecentes) {
-                renderizarListaInsercoes(data.insercoesRecentes);
-                atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
+                const tamanhoNovo = data.insercoesRecentes.length;
+                
+                // ⚠️ Se retornou MENOS dados que temos em memória, descartar
+                if (ultimoTamanoInsercoes > 0 && tamanhoNovo < ultimoTamanoInsercoes * 0.7) {
+                    // Menos de 70% do anterior = possivelmente resposta incompleta
+                    const aviso = `⚠️ [${new Date().toLocaleTimeString()}] API retornou ${tamanhoNovo} inserções (anterior: ${ultimoTamanoInsercoes}) - Descartando resposta incompleta`;
+                    console.warn(aviso);
+                    logValidacaoDados.push(aviso);
+                    if (logValidacaoDados.length > 100) logValidacaoDados.shift();
+                } else {
+                    // ✅ Dados OK - atualizar frontend
+                    ultimoTamanoInsercoes = tamanhoNovo;
+                    renderizarListaInsercoes(data.insercoesRecentes);
+                    atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
+                }
             }
         }
         
@@ -145,11 +156,6 @@ async function cicloAtualizacaoRecorrente() {
             
             if (responseCompleta.ok) {
                 const dataCompleta = await responseCompleta.json();
-                
-                // 🔍 LOG: Monitorar dados do dashboard
-                const qtdDashboard = dataCompleta.insercoesRecentes?.length || 0;
-                console.log(`📊 /api/dashboard: ${qtdDashboard} inserções (metricas: ${dataCompleta.metricas ? 'sim' : 'não'})`, dataCompleta);
-                
                 if (dataCompleta.success && dataCompleta.metricas) {
                     // Renderizar métricas e gráficos
                     atualizarMetricasComDeteccao(dataCompleta.metricas);
