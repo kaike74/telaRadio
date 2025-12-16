@@ -80,6 +80,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar ticker de notícias
     renderizarTicker(['Monitorando inserções em tempo real...']);
 
+    // ⭐ NOVO: Iniciar limpeza periódica de memória (a cada 30 minutos)
+    iniciarLimpezaPeriodica();
+
     // Iniciar orquestração serializada
     iniciarCicloAtualizacao();
 });
@@ -216,6 +219,108 @@ async function buscarDashboardCompleto() {
     }
 }
 
+// ⭐ NOVO: Limpeza Periódica de Memória
+// Previne vazamento de memória após 8+ horas de funcionamento
+function iniciarLimpezaPeriodica() {
+    // Limpar a cada 30 minutos (1800000ms)
+    setInterval(() => {
+        console.log('%c🧹 LIMPEZA DE MEMÓRIA INICIADA', 'color: #ff9800; font-weight: bold; font-size: 12px;');
+        
+        const estadoAntes = {
+            cacheLocal: filaRequisicaoCoordenadas.cacheLocal.size,
+            insercoesPrevias: insercoesPreviasIds.size,
+            tickerTimeouts: tickerItemsTimeout.size,
+            campanhasDetectadas: campanhasDetectadas.size,
+            campanhasDataDeteccao: campanhasDataDeteccao.size,
+            milestoneCampanhas: milestoneCampanhas.size,
+            animacoesAtivas: animacoesAtivas.size
+        };
+        
+        // 1️⃣ Limpar cache de coordenadas (manter apenas últimas 200)
+        if (filaRequisicaoCoordenadas.cacheLocal.size > 200) {
+            const idsCache = Array.from(filaRequisicaoCoordenadas.cacheLocal.keys());
+            const paraRemover = idsCache.slice(0, idsCache.length - 200);
+            paraRemover.forEach(cidade => {
+                filaRequisicaoCoordenadas.cacheLocal.delete(cidade);
+            });
+            console.log(`   📍 Cache de coordenadas: ${estadoAntes.cacheLocal} → ${filaRequisicaoCoordenadas.cacheLocal.size}`);
+        }
+        
+        // 2️⃣ Limpar inserções prévias (manter apenas as últimas 100)
+        if (insercoesPreviasIds.size > 100) {
+            insercoesPreviasIds = new Set(Array.from(insercoesPreviasIds).slice(-100));
+            console.log(`   📝 Inserções anteriores: ${estadoAntes.insercoesPrevias} → ${insercoesPreviasIds.size}`);
+        }
+        
+        // 3️⃣ Campanhas detectadas (manter apenas últimas 50)
+        if (campanhasDetectadas && campanhasDetectadas.size > 50) {
+            const campanhasList = Array.from(campanhasDetectadas);
+            campanhasDetectadas = new Set(campanhasList.slice(-50));
+            console.log(`   🎯 Campanhas detectadas: ${estadoAntes.campanhasDetectadas} → ${campanhasDetectadas.size}`);
+        }
+        
+        // 4️⃣ Datas de campanhas (manter apenas últimas 50)
+        if (campanhasDataDeteccao && campanhasDataDeteccao.size > 50) {
+            const dataList = Array.from(campanhasDataDeteccao.keys());
+            const paraRemoverData = dataList.slice(0, dataList.length - 50);
+            paraRemoverData.forEach(campanha => {
+                campanhasDataDeteccao.delete(campanha);
+            });
+            console.log(`   📅 Data de detecção: ${estadoAntes.campanhasDataDeteccao} → ${campanhasDataDeteccao.size}`);
+        }
+        
+        // 5️⃣ Milestone (manter apenas últimas 50)
+        if (milestoneCampanhas && milestoneCampanhas.size > 50) {
+            const milestoneList = Array.from(milestoneCampanhas.keys());
+            const paraRemoverMilestone = milestoneList.slice(0, milestoneList.length - 50);
+            paraRemoverMilestone.forEach(campanha => {
+                milestoneCampanhas.delete(campanha);
+            });
+            console.log(`   🏆 Milestones: ${estadoAntes.milestoneCampanhas} → ${milestoneCampanhas.size}`);
+        }
+        
+        // 6️⃣ Remover timeouts de ticker que já teriam expirado
+        if (tickerItemsTimeout) {
+            let removidosTimeouts = 0;
+            for (const [itemId, timeoutId] of tickerItemsTimeout.entries()) {
+                // Se o item não existe mais no DOM, remover do mapa
+                if (!document.querySelector(`[data-ticker-id="${itemId}"]`)) {
+                    clearTimeout(timeoutId);
+                    tickerItemsTimeout.delete(itemId);
+                    removidosTimeouts++;
+                }
+            }
+            if (removidosTimeouts > 0) {
+                console.log(`   ⏱️ Timeouts do ticker: ${estadoAntes.tickerTimeouts} → ${tickerItemsTimeout.size} (removidos ${removidosTimeouts})`);
+            }
+        }
+        
+        // 7️⃣ Verificar pings orfãos (no mapa mas não em animacoesAtivas)
+        const pingas = document.querySelectorAll('.pinga');
+        let orfaos = 0;
+        pingas.forEach(pinga => {
+            if (!animacoesAtivas.has(pinga.id)) {
+                console.warn(`   ⚠️ Pinga orfão encontrado: ${pinga.id}`);
+                orfaos++;
+            }
+        });
+        if (orfaos > 0) {
+            console.log(`   🗑️ Pingas orfãos encontrados: ${orfaos}`);
+        }
+        
+        console.log(`%c✅ LIMPEZA CONCLUÍDA - Memória otimizada`, 'color: #4caf50; font-weight: bold; font-size: 12px;');
+        console.log('   Estado da memória:', {
+            cacheLocal: filaRequisicaoCoordenadas.cacheLocal.size,
+            insercoesPrevias: insercoesPreviasIds.size,
+            tickerTimeouts: tickerItemsTimeout.size,
+            campanhasDetectadas: campanhasDetectadas ? campanhasDetectadas.size : 0,
+            campanhasDataDeteccao: campanhasDataDeteccao ? campanhasDataDeteccao.size : 0,
+            milestoneCampanhas: milestoneCampanhas ? milestoneCampanhas.size : 0,
+            animacoesAtivas: animacoesAtivas.size,
+            totalMemEmUso: (performance.memory?.usedJSHeapSize / 1048576).toFixed(2) + ' MB'
+        });
+    }, 30 * 60 * 1000); // 30 minutos
+}
 
 
 // =========================
@@ -623,9 +728,18 @@ const filaRequisicaoCoordenadas = {
     fila: [],
     emProgress: 0,
     MAX_SIMULTANEOUS: 2,
+    MAX_FILA_SIZE: 100, // ⭐ NOVO: Limite máximo de itens na fila
     cacheLocal: new Map(),
+    totalProcessadas: 0,
+    totalFalhadas: 0,
     
     async adicionar(insercao, pingaId, tickerId) {
+        // Se a fila está muito grande, descartar requisição para evitar memory leak
+        if (this.fila.length >= this.MAX_FILA_SIZE) {
+            console.warn(`⚠️ Fila de coordenadas CHEIA (${this.fila.length}/${this.MAX_FILA_SIZE}). Descartando: ${insercao.city}`);
+            return;
+        }
+        
         // Se já está em cache, usar direto
         if (this.cacheLocal.has(insercao.city)) {
             const cached = this.cacheLocal.get(insercao.city);
@@ -636,7 +750,7 @@ const filaRequisicaoCoordenadas = {
         }
         
         // Adicionar à fila
-        this.fila.push({ insercao, pingaId, tickerId });
+        this.fila.push({ insercao, pingaId, tickerId, tentativas: 0 });
         this.processar();
     },
     
@@ -647,7 +761,7 @@ const filaRequisicaoCoordenadas = {
         }
         
         // Pegar próximo da fila
-        const { insercao, pingaId, tickerId } = this.fila.shift();
+        const { insercao, pingaId, tickerId, tentativas } = this.fila.shift();
         this.emProgress++;
         
         try {
@@ -664,6 +778,7 @@ const filaRequisicaoCoordenadas = {
             
             if (!response.ok) {
                 LoggerOtimizado.aviso(`Não foi possível buscar coordenada para ${insercao.city}`);
+                this.totalFalhadas++;
                 this.emProgress--;
                 this.processar();
                 return;
@@ -673,6 +788,7 @@ const filaRequisicaoCoordenadas = {
             
             if (!data.sucesso || !data.coordenada) {
                 LoggerOtimizado.log(`Coordenada não encontrada: ${insercao.city}`, 'coordenadas-miss');
+                this.totalFalhadas++;
                 this.emProgress--;
                 this.processar();
                 return;
@@ -682,6 +798,7 @@ const filaRequisicaoCoordenadas = {
             
             // Cachear para próximas vezes
             this.cacheLocal.set(insercao.city, coordenada);
+            this.totalProcessadas++;
             
             LoggerOtimizado.log(`Coordenada encontrada: ${insercao.city}`, 'coordenadas-hit');
             
@@ -694,6 +811,24 @@ const filaRequisicaoCoordenadas = {
             } else {
                 LoggerOtimizado.erro(`Erro buscando coordenada: ${error.message}`);
             }
+            this.totalFalhadas++;
+        } finally {
+            this.emProgress--;
+            // Continuar processando fila
+            setTimeout(() => this.processar(), 100);
+        }
+    },
+    
+    getStatus() {
+        return {
+            filaSize: this.fila.length,
+            emProgress: this.emProgress,
+            cacheSize: this.cacheLocal.size,
+            totalProcessadas: this.totalProcessadas,
+            totalFalhadas: this.totalFalhadas
+        };
+    }
+};            }
         } finally {
             this.emProgress--;
             // Continuar processando fila

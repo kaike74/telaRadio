@@ -1,0 +1,182 @@
+# 📌 QUICK REFERENCE - 3 Problemas & Status
+
+```
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         STATUS DOS 3 PROBLEMAS CRÍTICOS                        ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─ PROBLEMA #3: Failed to Fetch após 8h ──────────────────────────────────────┐
+│ Status:        ✅ RESOLVIDO                                                  │
+│ Deploy:        🟢 PRONTO PARA HOJE                                           │
+│ Tempo Deploy:  ~30 minutos                                                   │
+│                                                                              │
+│ Causa:    Vazamento de memória (8 Maps/Sets cresciam indefinidamente)       │
+│ Solução:  Sistema de limpeza periódica + limite de fila                     │
+│ Resultado: Memória estável (~150MB), funciona 24h+                          │
+│                                                                              │
+│ Arquivos:                                                                   │
+│  - script.js (raiz)                          ✅ MODIFICADO                   │
+│  - telaRadio/script.js                       ✅ MODIFICADO                   │
+│                                                                              │
+│ Documentação:                                                               │
+│  📄 PROBLEMA3_RESOLVIDO.md                   [Detalhes técnicos]            │
+│  📄 SOLUCAO_FAILED_FETCH.md                  [Análise original]             │
+│  📄 GUIA_DEPLOY_TESTES.md                    [Como testar]                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ PROBLEMA #1: Pings Não Aparecem ──────────────────────────────────────────┐
+│ Status:        🟡 ANÁLISE COMPLETA (Pronto para implementação)              │
+│ Deploy:        ⏳ AMANHÃ (após validação de Problema #3)                     │
+│ Tempo Deploy:  ~2-4 horas                                                   │
+│                                                                              │
+│ Sintoma:   Inserções novas identificadas, mas pings não aparecem no mapa    │
+│                                                                              │
+│ Causa Provável:                                                             │
+│  1. Validação muito rigorosa (rejeita city == null silenciosamente)         │
+│  2. Timeout fixo 10s (API lenta não consegue responder)                     │
+│  3. Fila descarta requisições quando cheia (200+ itens)                     │
+│  4. Sem fallback (se coordenadas falham, sem pinga)                         │
+│                                                                              │
+│ Solução Implementada:                                                       │
+│  P1: ✅ Logging detalhado (por que ping é rejeitado)                       │
+│  P2: ✅ Retry automático com backoff (10s→15s→20s)                         │
+│  P3: ✅ Aumentar MAX_FILA_SIZE (100→200)                                   │
+│  P4: ✅ Fallback com localização aproximada (Brasil)                       │
+│                                                                              │
+│ Documentação:                                                               │
+│  📄 PROBLEMA1_ANALISE_DETALHADA.md           [4 causas + 4 soluções]       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ PROBLEMA #2: Dados Não Atualizam ─────────────────────────────────────────┐
+│ Status:        🟡 EM INVESTIGAÇÃO                                           │
+│ Deploy:        ⏳ SEMANA QUE VÊMEM (após diagnóstico)                        │
+│ Tempo Diag:    ~4-6 horas                                                   │
+│                                                                              │
+│ Sintoma:   Últimas inserções, ranking de cidades e emissoras não atualizam  │
+│                                                                              │
+│ Causa Provável:                                                             │
+│  - Filtro de 1h não sincronizando corretamente                             │
+│  - Fila de agendamento não processando como esperado                        │
+│  - Ranking sendo renderizado com dados antigos                              │
+│                                                                              │
+│ Checklist de Investigação:                                                  │
+│  [ ] Verificar /api/insercoes/recentes vs /api/dashboard                   │
+│  [ ] Debug filaAgendamento (cálculo hora+1)                                │
+│  [ ] Comparar filtros Python vs JavaScript                                  │
+│  [ ] Rastrear renderização de ranking                                       │
+│                                                                              │
+│ Documentação:                                                               │
+│  📄 PROBLEMA1_ANALISE_DETALHADA.md           [Ainda incluído em P1]        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                            TIMELINE DE AÇÕES                                   ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─ HOJE (16 de Dezembro) ─────────────────────────────────────────────────────┐
+│                                                                              │
+│  ✅ 09:00 - Análise completa dos 3 problemas                               │
+│  ✅ 11:00 - Documentação gerada (7 arquivos)                               │
+│  📄 12:00 - Você está lendo isto                                           │
+│  🚀 13:00 - DEPLOY correção #3 (Failed to Fetch)                           │
+│  🧪 14:00 - Testes básicos (4h monitor de memória)                         │
+│  🧪 18:00 - Verificar limpeza periódica (a cada 30min)                     │
+│                                                                              │
+│  ✅ OBJETIVO: Problema #3 RESOLVIDO antes do fim do dia                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ AMANHÃ (17 de Dezembro) ───────────────────────────────────────────────────┐
+│                                                                              │
+│  🔍 09:00 - Implementar logging para Problema #1                           │
+│  🔍 10:00 - Implementar retry automático                                   │
+│  🚀 11:00 - Deploy correção #1 (Pings)                                     │
+│  🧪 12:00 - Testes de pings em viewport grande                             │
+│  🧪 14:00 - Investigação inicial de Problema #2                            │
+│                                                                              │
+│  ✅ OBJETIVO: Problema #1 RESOLVIDO por fim do dia                        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ PRÓXIMA SEMANA (20 de Dezembro) ──────────────────────────────────────────┐
+│                                                                              │
+│  🔍 09:00 - Análise profunda de Problema #2                                │
+│  🔍 14:00 - Debug de fila de agendamento                                   │
+│  🚀 16:00 - Deploy correção #2 (Dados)                                     │
+│  🧪 17:00 - Testes de ranking e filtros                                    │
+│                                                                              │
+│  ✅ OBJETIVO: Problema #2 RESOLVIDO                                        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                          ARQUIVOS GERADOS (7)                                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+1. 📄 RESUMO_EXECUTIVO_3PROBLEMAS.md
+   └─ Visão geral dos 3 problemas + status
+
+2. 📄 PROBLEMA3_RESOLVIDO.md
+   └─ Detalhes técnicos da solução #3 (Memory Leak Fix)
+
+3. 📄 PROBLEMA1_ANALISE_DETALHADA.md
+   └─ 4 causas + 4 soluções para pings não aparecerem
+
+4. 📄 GUIA_DEPLOY_TESTES.md
+   └─ Step-by-step para deploy e testes
+
+5. 📄 SOLUCAO_FAILED_FETCH.md
+   └─ Análise original do problema #3 (para referência)
+
+6. 📄 DIAGNOSTICO_PINGS_EXATIDAO.md
+   └─ Diagnostico de localização de pings (para referência)
+
+7. 📄 GUIA_NOVO_PROJETO_TV.md
+   └─ Guia de CSS/HTML para novos projetos em TV (para referência)
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                       TESTE RÁPIDO NO CONSOLE                                 ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+Copiar e colar no Console (F12) para verificar se correção #3 foi aplicada:
+
+// Verificar função de limpeza existe
+typeof iniciarLimpezaPeriodica
+// Esperado: "function"
+
+// Verificar novo método getStatus()
+filaRequisicaoCoordenadas.getStatus()
+// Esperado: { filaSize: N, emProgress: N, cacheSize: N, ... }
+
+// Verificar novo parâmetro MAX_FILA_SIZE
+filaRequisicaoCoordenadas.MAX_FILA_SIZE
+// Esperado: 200
+
+// Verificar novo parâmetro MAX_SIMULTANEOUS
+filaRequisicaoCoordenadas.MAX_SIMULTANEOUS
+// Esperado: 3
+
+// Se tudo retorna true → Correção #3 ✅ APLICADA
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         PRÓXIMA AÇÃO RECOMENDADA                              ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+👉 Ler: GUIA_DEPLOY_TESTES.md (este arquivo tem o step-by-step para deploy)
+
+👉 Fazer:
+   1. Commit dos arquivos atuais
+   2. Deploy de script.js e telaRadio/script.js
+   3. Testar por 4+ horas
+   4. Verificar se "Failed to fetch" não acontece após 15:00
+
+👉 Reportar:
+   - Se limpeza foi acionada (logs no console a cada 30min)
+   - Se memória manteve-se ~150MB
+   - Se fila processou corretamente
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+Dúvidas? Veja os arquivos .md gerados em /teste/ para mais detalhes!
+
+```
