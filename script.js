@@ -828,13 +828,6 @@ const filaRequisicaoCoordenadas = {
             totalFalhadas: this.totalFalhadas
         };
     }
-};            }
-        } finally {
-            this.emProgress--;
-            // Continuar processando fila
-            setTimeout(() => this.processar(), 100);
-        }
-    }
 };
 
 /**
