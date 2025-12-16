@@ -394,6 +394,14 @@ async function cicloAtualizacaoRecorrente() {
             const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
             if (response.ok) {
                 const data = await response.json();
+                
+                // 🔍 LOG: Monitorar variação de inserções
+                const qtdInserc = data.insercoesRecentes?.length || 0;
+                if (!window._ultimaQtdInsercoes) window._ultimaQtdInsercoes = qtdInserc;
+                const variacao = qtdInserc !== window._ultimaQtdInsercoes ? ` ⚠️ VARIAÇÃO: ${window._ultimaQtdInsercoes} → ${qtdInserc}` : '';
+                console.log(`📊 /api/insercoes/recentes: ${qtdInserc} inserções${variacao}`, data.insercoesRecentes);
+                window._ultimaQtdInsercoes = qtdInserc;
+                
                 if (data.success && data.insercoesRecentes) {
                     renderizarListaInsercoes(data.insercoesRecentes);
                     atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
@@ -414,6 +422,11 @@ async function cicloAtualizacaoRecorrente() {
                 const fullResponse = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
                 if (fullResponse.ok) {
                     const fullData = await fullResponse.json();
+                    
+                    // 🔍 LOG: Monitorar dados do dashboard
+                    const qtdDashboard = fullData.insercoesRecentes?.length || 0;
+                    console.log(`📊 /api/dashboard: ${qtdDashboard} inserções (metricas: ${fullData.metricas ? 'sim' : 'não'})`, fullData);
+                    
                     if (fullData.success) {
                         // Atualizar apenas as 5 métricas (com proteção de monotonicity)
                         atualizarApenasMetricas();

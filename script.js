@@ -117,6 +117,13 @@ async function cicloAtualizacaoRecorrente() {
         if (response.ok) {
             const data = await response.json();
             
+            // 🔍 LOG: Monitorar variação de inserções
+            const qtdInserc = data.insercoesRecentes?.length || 0;
+            if (!window._ultimaQtdInsercoes) window._ultimaQtdInsercoes = qtdInserc;
+            const variacao = qtdInserc !== window._ultimaQtdInsercoes ? ` ⚠️ VARIAÇÃO: ${window._ultimaQtdInsercoes} → ${qtdInserc}` : '';
+            console.log(`📊 /api/insercoes/recentes: ${qtdInserc} inserções${variacao}`, data.insercoesRecentes);
+            window._ultimaQtdInsercoes = qtdInserc;
+            
             // Renderizar TUDO DE UMA VEZ (batch rendering)
             if (data.success && data.insercoesRecentes) {
                 renderizarListaInsercoes(data.insercoesRecentes);
@@ -138,6 +145,11 @@ async function cicloAtualizacaoRecorrente() {
             
             if (responseCompleta.ok) {
                 const dataCompleta = await responseCompleta.json();
+                
+                // 🔍 LOG: Monitorar dados do dashboard
+                const qtdDashboard = dataCompleta.insercoesRecentes?.length || 0;
+                console.log(`📊 /api/dashboard: ${qtdDashboard} inserções (metricas: ${dataCompleta.metricas ? 'sim' : 'não'})`, dataCompleta);
+                
                 if (dataCompleta.success && dataCompleta.metricas) {
                     // Renderizar métricas e gráficos
                     atualizarMetricasComDeteccao(dataCompleta.metricas);
