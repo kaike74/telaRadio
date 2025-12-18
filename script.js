@@ -38,10 +38,83 @@ console.log(`📱 Dispositivo detectado: ${DEVICE_TYPE} (${window.innerWidth}x${
 
 // Logging: apenas console padrão para erros críticos
 
+// ⭐ Logger otimizado (agrupador de logs)
+const LoggerOtimizado = {
+    // Agrupar logs por categoria (grupo + contador)
+    _grupos: new Map(),
+    _ultimoGrupoTempo: Date.now(),
+    INTERVALO_AGRUPAMENTO: 5000, // Agrupar logs com menos de 5s de diferença
+    
+    // Registrar um log simples
+    log(mensagem, categoria = 'geral', emojis = '📋') {
+        if (!CONFIG.VERBOSE_LOGS) {
+            if (!this._grupos.has(categoria)) {
+                this._grupos.set(categoria, { count: 0, exemplo: mensagem });
+            }
+            const grupo = this._grupos.get(categoria);
+            grupo.count++;
+            return;
+        }
+        console.log(`${emojis} ${mensagem}`);
+    },
+    
+    // Logar com grupo nativo (muito mais limpo)
+    grupo(titulo, dados, emojis = '📊') {
+        if (CONFIG.VERBOSE_LOGS) {
+            console.group(`${emojis} ${titulo}`);
+            if (typeof dados === 'object') {
+                Object.entries(dados).forEach(([chave, valor]) => {
+                    console.log(`  ${chave}: ${valor}`);
+                });
+            } else {
+                console.log(dados);
+            }
+            console.groupEnd();
+        } else {
+            // Em modo otimizado, apenas contar
+            if (!this._grupos.has(titulo)) {
+                this._grupos.set(titulo, { count: 0, exemplo: dados });
+            }
+            this._grupos.get(titulo).count++;
+        }
+    },
+    
+    // Exibir resumo agrupado
+    exibirResumo() {
+        if (this._grupos.size === 0) return;
+        
+        const agora = Date.now();
+        if (agora - this._ultimoGrupoTempo < this.INTERVALO_AGRUPAMENTO) return;
+        
+        console.group(`%c📦 RESUMO DE LOGS AGRUPADOS`, 'color: #4ecdc4; font-weight: bold; font-size: 12px;');
+        this._grupos.forEach((dados, categoria) => {
+            if (dados.count > 1) {
+                console.log(`  ${categoria}: ${dados.count}x (exemplo: ${JSON.stringify(dados.exemplo).substring(0, 50)}...)`);
+            }
+        });
+        console.groupEnd();
+        
+        this._grupos.clear();
+        this._ultimoGrupoTempo = agora;
+    },
+    
+    // Log de erro (sempre mostrado)
+    erro(mensagem, erro = null) {
+        console.error(`%c❌ ${mensagem}`, 'color: #ff6b6b; font-weight: bold;');
+        if (erro) console.error(erro);
+    },
+    
+    // Log de aviso (sempre mostrado)
+    aviso(mensagem) {
+        console.warn(`%c⚠️ ${mensagem}`, 'color: #ffd93d; font-weight: bold;');
+    }
+};
+
 // Configuração
 const CONFIG = {
     API_BASE: 'https://dashboard-radio-worker.kaike-458.workers.dev',
-    DEVICE_TYPE: DEVICE_TYPE
+    DEVICE_TYPE: DEVICE_TYPE,
+    VERBOSE_LOGS: false // Modo otimizado: agrupa logs
 };
 
 // Estado global
@@ -724,22 +797,28 @@ function criarPingaDoTicker(insercao, tickerId) {
     try {
         // Validar dados mínimos
         if (!insercao || !insercao.city) {
+            console.warn(`⚠️ Inserção sem city rejeitada (ID: ${tickerId})`);
             LoggerOtimizado.log(`Inserção sem city rejeitada (ID: ${tickerId})`, 'pinga-rejeitado');
             return;
         }
+
+        console.log(`🔵 criarPingaDoTicker INICIADO: ${insercao.stationName} em ${insercao.city}`);
 
         // ID único do pinga baseado na inserção
         const pingaId = `pinga-ticker-${insercao.city}-${insercao.hour}-${insercao.stationName}`;
         
         // Verificar se esse pinga já existe
         if (animacoesAtivas.has(pingaId)) {
+            console.log(`⏭️ Pinga já existe: ${insercao.stationName}`);
             LoggerOtimizado.log(`Pinga já existe: ${insercao.stationName}`, 'pinga-duplicado');
             return;
         }
 
+        console.log(`🔶 Adicionando à fila: ${insercao.city}`);
         buscarCoordenadaECriarPinga(insercao, pingaId, tickerId);
 
     } catch (error) {
+        console.error(`❌ Erro em criarPingaDoTicker:`, error);
         LoggerOtimizado.erro(`Erro em criarPingaDoTicker: ${error.message}`, error);
     }
 }
@@ -756,6 +835,8 @@ const filaRequisicaoCoordenadas = {
     totalFalhadas: 0,
     
     async adicionar(insercao, pingaId, tickerId) {
+        console.log(`📥 [FILA] Tentando adicionar: ${insercao.city} (fila: ${this.fila.length}/${this.MAX_FILA_SIZE})`);
+        
         // Se a fila está muito grande, descartar requisição para evitar memory leak
         if (this.fila.length >= this.MAX_FILA_SIZE) {
             console.warn(`⚠️ Fila de coordenadas CHEIA (${this.fila.length}/${this.MAX_FILA_SIZE}). Descartando: ${insercao.city}`);
@@ -764,6 +845,7 @@ const filaRequisicaoCoordenadas = {
         
         // Se já está em cache, usar direto
         if (this.cacheLocal.has(insercao.city)) {
+            console.log(`✅ Cache HIT: ${insercao.city}`);
             const cached = this.cacheLocal.get(insercao.city);
             if (cached) {
                 await criarPingaComCoordenada(insercao, pingaId, cached);
@@ -771,6 +853,7 @@ const filaRequisicaoCoordenadas = {
             return;
         }
         
+        console.log(`➕ Adicionando à fila: ${insercao.city}`);
         // Adicionar à fila
         this.fila.push({ insercao, pingaId, tickerId, tentativas: 0 });
         this.processar();
@@ -779,12 +862,17 @@ const filaRequisicaoCoordenadas = {
     async processar() {
         // Se já tem muitas requisições em progresso, aguardar
         if (this.emProgress >= this.MAX_SIMULTANEOUS || this.fila.length === 0) {
+            if (this.fila.length > 0) {
+                console.log(`⏳ [FILA] Aguardando slot: ${this.emProgress}/${this.MAX_SIMULTANEOUS} em progresso, fila: ${this.fila.length}`);
+            }
             return;
         }
         
         // Pegar próximo da fila
         const { insercao, pingaId, tickerId, tentativas } = this.fila.shift();
         this.emProgress++;
+        
+        console.log(`🔄 [FILA] Processando: ${insercao.city} (${this.emProgress}/${this.MAX_SIMULTANEOUS} em progresso)`);
         
         try {
             // Fetch com timeout de 10 segundos
@@ -799,6 +887,7 @@ const filaRequisicaoCoordenadas = {
             clearTimeout(timeoutId);
             
             if (!response.ok) {
+                console.warn(`❌ API retornou erro para ${insercao.city}: ${response.status}`);
                 LoggerOtimizado.aviso(`Não foi possível buscar coordenada para ${insercao.city}`);
                 this.totalFalhadas++;
                 this.emProgress--;
@@ -809,6 +898,7 @@ const filaRequisicaoCoordenadas = {
             const data = await response.json();
             
             if (!data.sucesso || !data.coordenada) {
+                console.log(`❌ Coordenada não encontrada: ${insercao.city}`);
                 LoggerOtimizado.log(`Coordenada não encontrada: ${insercao.city}`, 'coordenadas-miss');
                 this.totalFalhadas++;
                 this.emProgress--;
@@ -817,6 +907,8 @@ const filaRequisicaoCoordenadas = {
             }
 
             const coordenada = data.coordenada;
+            
+            console.log(`✅ Coordenada encontrada: ${insercao.city} (${coordenada.lat}, ${coordenada.lng})`);
             
             // Cachear para próximas vezes
             this.cacheLocal.set(insercao.city, coordenada);
@@ -829,13 +921,16 @@ const filaRequisicaoCoordenadas = {
             
         } catch (error) {
             if (error.name === 'AbortError') {
+                console.warn(`⏱️ Timeout buscando ${insercao.city}`);
                 LoggerOtimizado.aviso(`Timeout buscando ${insercao.city}`);
             } else {
+                console.error(`🔴 Erro buscando coordenada:`, error);
                 LoggerOtimizado.erro(`Erro buscando coordenada: ${error.message}`);
             }
             this.totalFalhadas++;
         } finally {
             this.emProgress--;
+            console.log(`✔️ Finalizando requisição, fila restante: ${this.fila.length}`);
             // Continuar processando fila
             setTimeout(() => this.processar(), 100);
         }
@@ -849,6 +944,19 @@ const filaRequisicaoCoordenadas = {
             totalProcessadas: this.totalProcessadas,
             totalFalhadas: this.totalFalhadas
         };
+    },
+    
+    // 🔍 DEBUG: Mostrar status detalhado
+    exibirStatus() {
+        console.group('%c📊 STATUS DA FILA DE COORDENADAS', 'color: #4ecdc4; font-weight: bold; font-size: 14px;');
+        console.log(`Itens na fila: ${this.fila.length}`);
+        console.log(`Em progresso: ${this.emProgress}/${this.MAX_SIMULTANEOUS}`);
+        console.log(`Cache size: ${this.cacheLocal.size}`);
+        console.log(`Total processadas: ${this.totalProcessadas}`);
+        console.log(`Total falhadas: ${this.totalFalhadas}`);
+        console.log(`Taxa de sucesso: ${((this.totalProcessadas / (this.totalProcessadas + this.totalFalhadas)) * 100 || 0).toFixed(1)}%`);
+        console.log(`Pings ativos: ${animacoesAtivas.size}`);
+        console.groupEnd();
     }
 };
 
@@ -865,6 +973,8 @@ async function buscarCoordenadaECriarPinga(insercao, pingaId, tickerId) {
 
 async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
     try {
+        console.log(`🎯 criarPingaComCoordenada: ${insercao.city} em (${coordenada.lat}, ${coordenada.lng})`);
+        
         // Criar animação com os dados da insercão e coordenada
         const animacao = {
             id: pingaId,
@@ -886,6 +996,7 @@ async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
         const mapaContainer = document.getElementById('mapa-container');
         
         if (!container || !mapaContainer) {
+            console.error(`❌ Containers do mapa não encontrados`);
             LoggerOtimizado.erro('Containers do mapa não encontrados');
             return;
         }
@@ -944,6 +1055,9 @@ function criarPinga(animacao, container, bounds) {
 
         container.appendChild(pinga);
         animacoesAtivas.set(animacao.id, pinga);
+        
+        console.log(`✅ PINGA CRIADO: ${animacao.dados.emissora} em ${animacao.dados.cidade}`);
+        console.log(`   Total de pings ativos: ${animacoesAtivas.size}`);
         
         // ⭐ NOVO: Remover pinga automaticamente após 30 segundos com fadeout
         const DURACAO_PINGA_MS = 30000; // 30 segundos
