@@ -199,23 +199,14 @@ async function cicloAtualizacaoRecorrente() {
         if (response.ok) {
             const data = await response.json();
             
-            // 🔍 VALIDAÇÃO: Verificar se quantidade de dados é confiável
+            // ✅ Dados OK - sempre atualizar (validação de duplicatas é feita no atualizarTicker)
             if (data.success && data.insercoesRecentes) {
                 const tamanhoNovo = data.insercoesRecentes.length;
+                ultimoTamanoInsercoes = tamanhoNovo;
                 
-                // ⚠️ Se retornou MENOS dados que temos em memória, descartar
-                if (ultimoTamanoInsercoes > 0 && tamanhoNovo < ultimoTamanoInsercoes * 0.7) {
-                    // Menos de 70% do anterior = possivelmente resposta incompleta
-                    const aviso = `⚠️ [${new Date().toLocaleTimeString()}] API retornou ${tamanhoNovo} inserções (anterior: ${ultimoTamanoInsercoes}) - Descartando resposta incompleta`;
-                    console.warn(aviso);
-                    logValidacaoDados.push(aviso);
-                    if (logValidacaoDados.length > 100) logValidacaoDados.shift();
-                } else {
-                    // ✅ Dados OK - atualizar frontend
-                    ultimoTamanoInsercoes = tamanhoNovo;
-                    renderizarListaInsercoes(data.insercoesRecentes);
-                    atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
-                }
+                console.log(`📥 Inserções recentes recebidas: ${tamanhoNovo} itens`);
+                renderizarListaInsercoes(data.insercoesRecentes);
+                atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
             }
         }
         
@@ -234,6 +225,13 @@ async function cicloAtualizacaoRecorrente() {
             if (responseCompleta.ok) {
                 const dataCompleta = await responseCompleta.json();
                 if (dataCompleta.success && dataCompleta.metricas) {
+                    console.log(`📊 Dashboard recebido:`);
+                    console.log(`   Campanhas: ${dataCompleta.metricas.campanhasAtivas}`);
+                    console.log(`   Rádios: ${dataCompleta.metricas.emissorasAtivas}`);
+                    console.log(`   Inserções hoje: ${dataCompleta.metricas.insercoesHoje}`);
+                    console.log(`   Top cidades: ${dataCompleta.metricas.topCidadesComMaiorNumeroEmissoras?.length || 0}`);
+                    console.log(`   Top emissoras: ${dataCompleta.metricas.topEmissorasComMaiorNumeroCampanhas?.length || 0}`);
+                    
                     // Renderizar métricas e gráficos
                     atualizarMetricasComDeteccao(dataCompleta.metricas);
                     renderizarGraficoEmissoras(dataCompleta.metricas.topEmissorasComMaiorNumeroCampanhas || []);
@@ -462,61 +460,95 @@ function atualizarMetricasComDeteccao(novasMetricas) {
     let houveAlteracao = false;
     const alteracoes = [];
     
+    // ⭐ GARANTIA DE MONOTONICICIDADE: Usar MÁXIMO entre anterior e novo
+    // Métricas NUNCA diminuem, apenas aumentam ou mantêm
+    
     // Verificar campanhas
     if (novasMetricas.campanhasAtivas !== metricasAnteriores.campanhasAtivas) {
         const anterior = metricasAnteriores.campanhasAtivas;
         const novo = novasMetricas.campanhasAtivas;
+        
+        // ⭐ NOVO: Se nova métrica é menor, usar anterior (monotonicicidade)
+        const valorFinal = (anterior !== null && novo < anterior) ? anterior : novo;
+        
         houveAlteracao = true;
         
         if (anterior !== null) {
-            const diferenca = novo - anterior;
+            const diferenca = valorFinal - anterior;
             const sinal = diferenca > 0 ? '+' : '';
-            alteracoes.push(`📢 Campanhas: ${anterior} → ${novo} (${sinal}${diferenca})`);
+            
+            // Avisar se houve descarte por monotonicicidade
+            if (novo < anterior) {
+                alteracoes.push(`📢 Campanhas: ${anterior} → ${novo} ⚠️ DESCARTADO (${novo} < ${anterior}), mantendo ${anterior}`);
+                console.warn(`⚠️ Campanhas ativas diminuiu de ${anterior} para ${novo} - DESCARTANDO para manter monotonicicidade`);
+            } else {
+                alteracoes.push(`📢 Campanhas: ${anterior} → ${valorFinal} (${sinal}${diferenca})`);
+            }
         }
         
         const elemCampanhas = document.getElementById('metrica-campanhas');
-        if (elemCampanhas) elemCampanhas.textContent = novo;
-        metricasAnteriores.campanhasAtivas = novo;
+        if (elemCampanhas) elemCampanhas.textContent = valorFinal;
+        metricasAnteriores.campanhasAtivas = valorFinal;
     }
     
     // Verificar rádios ativas
     if (novasMetricas.emissorasAtivas !== metricasAnteriores.emissorasAtivas) {
         const anterior = metricasAnteriores.emissorasAtivas;
         const novo = novasMetricas.emissorasAtivas;
+        
+        // ⭐ NOVO: Se nova métrica é menor, usar anterior
+        const valorFinal = (anterior !== null && novo < anterior) ? anterior : novo;
+        
         houveAlteracao = true;
         
         if (anterior !== null) {
-            const diferenca = novo - anterior;
+            const diferenca = valorFinal - anterior;
             const sinal = diferenca > 0 ? '+' : '';
-            alteracoes.push(`📻 Rádios: ${anterior} → ${novo} (${sinal}${diferenca})`);
+            
+            if (novo < anterior) {
+                alteracoes.push(`📻 Rádios: ${anterior} → ${novo} ⚠️ DESCARTADO, mantendo ${anterior}`);
+                console.warn(`⚠️ Rádios ativas diminuiu de ${anterior} para ${novo} - DESCARTANDO para manter monotonicicidade`);
+            } else {
+                alteracoes.push(`📻 Rádios: ${anterior} → ${valorFinal} (${sinal}${diferenca})`);
+            }
         }
         
         const elemRadios = document.getElementById('metrica-radios');
-        if (elemRadios) elemRadios.textContent = novo;
-        metricasAnteriores.emissorasAtivas = novo;
+        if (elemRadios) elemRadios.textContent = valorFinal;
+        metricasAnteriores.emissorasAtivas = valorFinal;
     }
     
     // Verificar inserções HOJE
     if (novasMetricas.insercoesHoje !== metricasAnteriores.insercoesHoje) {
         const anterior = metricasAnteriores.insercoesHoje;
         const novo = novasMetricas.insercoesHoje;
+        
+        // ⭐ NOVO: Se nova métrica é menor, usar anterior
+        const valorFinal = (anterior !== null && novo < anterior) ? anterior : novo;
+        
         houveAlteracao = true;
         
         if (anterior !== null) {
-            const diferenca = novo - anterior;
+            const diferenca = valorFinal - anterior;
             const sinal = diferenca > 0 ? '+' : '';
-            alteracoes.push(`📊 INSERÇÕES HOJE: ${anterior} → ${novo} (${sinal}${diferenca})`);
             
-            // 🎯 LOG DETALHADO QUANDO INSERÇÕES MUDAM
-            console.warn(`%c⚡ ${horaFormatada} - MUDANÇA EM INSERÇÕES HOJE`, 'color: #ff6b6b; font-weight: bold; font-size: 14px;');
-            console.log(`   Anterior: ${anterior}`);
-            console.log(`   Novo:     ${novo}`);
-            console.log(`   Diferença: ${sinal}${diferenca} inserções`);
+            if (novo < anterior) {
+                alteracoes.push(`📊 INSERÇÕES HOJE: ${anterior} → ${novo} ⚠️ DESCARTADO, mantendo ${anterior}`);
+                console.warn(`%c⚡ ${horaFormatada} - Inserções hoje DIMINUIU de ${anterior} para ${novo} - DESCARTANDO`, 'color: #ff6b6b; font-weight: bold;');
+            } else {
+                alteracoes.push(`📊 INSERÇÕES HOJE: ${anterior} → ${valorFinal} (${sinal}${diferenca})`);
+                
+                // 🎯 LOG DETALHADO QUANDO INSERÇÕES AUMENTAM
+                console.warn(`%c⚡ ${horaFormatada} - MUDANÇA EM INSERÇÕES HOJE`, 'color: #ffb84d; font-weight: bold; font-size: 14px;');
+                console.log(`   Anterior: ${anterior}`);
+                console.log(`   Novo:     ${valorFinal}`);
+                console.log(`   Diferença: ${sinal}${diferenca} inserções`);
+            }
         }
         
         const elemInsercoes = document.getElementById('metrica-insercoes');
-        if (elemInsercoes) elemInsercoes.textContent = novo;
-        metricasAnteriores.insercoesHoje = novo;
+        if (elemInsercoes) elemInsercoes.textContent = valorFinal;
+        metricasAnteriores.insercoesHoje = valorFinal;
     }
     
     // Logar mudanças detectadas
