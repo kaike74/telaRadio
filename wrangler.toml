@@ -6,6 +6,7 @@ account_id = "458e6d616cddf6660731e71235fe4c45"
 
 # KV Namespace
 kv_namespaces = [
+  { binding = "CACHE", id = "598948c19c524ab3af65831cd8f6278f" },
   { binding = "DASHBOARD_KV", id = "598948c19c524ab3af65831cd8f6278f" }
 ]
 
