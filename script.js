@@ -1499,6 +1499,13 @@ window.testCidadesBrasil = function() {
  * Renderiza items no ticker de notícias
  * @param {Array} items - Array de items para o ticker
  */
+/**
+ * ⭐ HISTÓRICO: Armazenar últimos items do ticker para manter continuidade
+ * @type {Array} Array de items do ticker mantido em memória
+ */
+let tickerHistorico = [];
+const MAX_TICKER_ITEMS = 20; // Máximo de items a manter no ticker
+
 function renderizarTicker(items) {
     const tickerItemsContainer = document.getElementById('ticker-items');
     
@@ -1507,25 +1514,45 @@ function renderizarTicker(items) {
         return;
     }
 
-    // Limpar items anteriores
-    tickerItemsContainer.innerHTML = '';
-
+    // ⭐ NOVO: Se não há items, verificar se já temos histórico
     if (!items || items.length === 0) {
-        // Mostrar mensagem padrão se não houver items
-        const defaultItem = document.createElement('div');
-        defaultItem.className = 'ticker-item';
-        defaultItem.innerHTML = `
-            <span class="ticker-item-icon"></span>
-            <span class="ticker-item-text">Monitorando em tempo real...</span>
-        `;
-        tickerItemsContainer.appendChild(defaultItem);
+        // Se o histórico está vazio, mostrar mensagem padrão
+        if (tickerHistorico.length === 0) {
+            tickerItemsContainer.innerHTML = '';
+            const defaultItem = document.createElement('div');
+            defaultItem.className = 'ticker-item';
+            defaultItem.innerHTML = `
+                <span class="ticker-item-icon"></span>
+                <span class="ticker-item-text">Monitorando em tempo real...</span>
+            `;
+            tickerItemsContainer.appendChild(defaultItem);
+        }
         return;
     }
 
-    // Criar items do ticker
-    items.forEach((item, index) => {
+    // ⭐ NOVO: Adicionar novos items ao histórico
+    items.forEach(item => {
+        if (item && item.id) {
+            // Verificar se o item já existe no histórico (evitar duplicatas)
+            const jáExiste = tickerHistorico.some(h => h.id === item.id);
+            if (!jáExiste) {
+                tickerHistorico.push(item);
+            }
+        }
+    });
+
+    // ⭐ NOVO: Manter apenas os últimos N items
+    if (tickerHistorico.length > MAX_TICKER_ITEMS) {
+        tickerHistorico = tickerHistorico.slice(-MAX_TICKER_ITEMS);
+    }
+
+    // ⭐ NOVO: Renderizar todos os items do histórico
+    tickerItemsContainer.innerHTML = '';
+    
+    tickerHistorico.forEach((item, index) => {
         const tickerItem = document.createElement('div');
         tickerItem.className = 'ticker-item';
+        tickerItem.id = `ticker-item-${item.id}`;
         
         // ⭐ NOVO: Adicionar classe especial para campanhas novas
         if (typeof item === 'object' && item.id && item.id.includes('info-nova-')) {
@@ -1554,13 +1581,26 @@ function renderizarTicker(items) {
         
         tickerItem.innerHTML = conteudo;
         tickerItemsContainer.appendChild(tickerItem);
-        
-        // Duplicar para efeito de loop contínuo
-        if (index === items.length - 1) {
-            const clonedItems = Array.from(tickerItemsContainer.children).map(child => child.cloneNode(true));
-            clonedItems.forEach(cloned => tickerItemsContainer.appendChild(cloned));
-        }
     });
+
+    // ⭐ NOVO: Duplicar para efeito de loop contínuo (apenas uma vez no início)
+    if (tickerItemsContainer.children.length > 0) {
+        // Verificar se já foi duplicado
+        const totalItems = tickerItemsContainer.children.length;
+        const metadeEsperada = tickerHistorico.length;
+        
+        // Se não está duplicado ainda, duplicar
+        if (totalItems === metadeEsperada) {
+            const clonedItems = Array.from(tickerItemsContainer.children).map(child => child.cloneNode(true));
+            clonedItems.forEach(cloned => {
+                // Gerar novo ID para clones
+                cloned.id = cloned.id + '-clone';
+                tickerItemsContainer.appendChild(cloned);
+            });
+        }
+    }
+
+    console.log(`🎬 Ticker atualizado: ${tickerHistorico.length} items no histórico`);
 }
 
 /**
@@ -1924,17 +1964,16 @@ function atualizarTicker(dados) {
         
         console.log(`📊 Ticker: ${dados.insercoesRecentes.length} inserções recentes, ${novasInsercoes.length} novas pra pingar`);
         
+        // ⭐ NOVO: Chamar renderizarTicker com os items coletados
+        if (items.length > 0) {
+            renderizarTicker(items);
+        }
+        
     } else {
         console.warn('⚠️ insercoesRecentes vazio ou não é array');
         if (!dados.insercoesRecentes) console.log('   - dados.insercoesRecentes é undefined/null');
         if (dados.insercoesRecentes && !Array.isArray(dados.insercoesRecentes)) console.log('   - dados.insercoesRecentes não é um array');
         if (dados.insercoesRecentes && Array.isArray(dados.insercoesRecentes) && dados.insercoesRecentes.length === 0) console.log('   - Array vazio');
-    }
-
-    // Se não houver items, usar padrão
-    const tickerContent = document.getElementById('ticker-content');
-    if (items.length > 0 && tickerContent) {
-        renderizarTicker(items);
     }
 }
 
@@ -1948,9 +1987,13 @@ function configurarAutoRemoveTicker(itemId) {
         clearTimeout(tickerItemsTimeout.get(itemId));
     }
     
-    // Configurar novo timeout de 30 segundos
+    // Configurar novo timeout de 120 segundos
     const timeoutId = setTimeout(() => {
-        const tickerItem = document.querySelector(`[data-ticker-id="${itemId}"]`);
+        // ⭐ NOVO: Remover do histórico
+        tickerHistorico = tickerHistorico.filter(item => item.id !== itemId);
+        
+        // Remover do DOM
+        const tickerItem = document.getElementById(`ticker-item-${itemId}`);
         if (tickerItem) {
             tickerItem.style.animation = 'fadeOut 0.5s ease-out forwards';
             setTimeout(() => {
@@ -1960,8 +2003,15 @@ function configurarAutoRemoveTicker(itemId) {
                 }
             }, 500);
         }
+        
+        // Remover clones também
+        const tickerItemClone = document.getElementById(`ticker-item-${itemId}-clone`);
+        if (tickerItemClone) {
+            tickerItemClone.remove();
+        }
+        
         tickerItemsTimeout.delete(itemId);
-    }, 120000); // 120 segundos (aumentado de 60s)
+    }, 120000); // 120 segundos
     
     tickerItemsTimeout.set(itemId, timeoutId);
 }
