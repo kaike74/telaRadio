@@ -1569,7 +1569,7 @@ function renderizarTicker(items) {
         } else if (typeof item === 'object') {
             const icon = item.icon ? `<span class="ticker-item-icon" style="background-color: ${item.color || '#E03D99'};"></span>` : '';
             const text = item.text || '';
-            const highlightColor = item.textColor || '#E03D99';
+            const highlightColor = item.textColor || '#ffffff';
             const highlight = item.highlight ? `<span class="ticker-item-highlight" style="color: ${highlightColor} !important;">${escapeHtml(item.highlight)}</span>` : '';
             const textColor = item.textColor ? `color: ${item.textColor} !important;` : '';
             
@@ -1899,7 +1899,7 @@ function atualizarTicker(dados) {
                     id: itemId,
                     icon: true,
                     text: mensagemTicker,
-                    textColor: '#E03D99', // ⭐ NOVO: Texto em rosa (emissora e cliente ficarão rosa)
+                    textColor: '#ffffff', // ⭐ NOVO: Texto em branco
                     highlight: `${cidade}`,
                     color: '#E03D99'
                 });

@@ -93,7 +93,7 @@ body {
     font-size: clamp(18px, 2.5vw, 32px);
     margin-bottom: clamp(8px, 1.5vh, 16px);
     font-weight: 600;
-    color: #E03D99;
+    color: #ffffff;
 }
 
 .mapa-content-wrapper {
@@ -251,12 +251,12 @@ svg {
 .insercao-radio {
     font-weight: 600;
     font-size: 15px;
-    color: #E03D99;
+    color: #ffffff;
 }
 
 .lista-lateral .insercao-radio {
     font-size: 12px;
-    color: #E03D99;
+    color: #ffffff;
     font-weight: 600;
 }
 
@@ -306,7 +306,7 @@ svg {
 }
 
 .metrica-valor {
-    color: #E03D99;
+    color: #ffffff;
     font-weight: 700;
     font-size: clamp(20px, 2.8vw, 32px);
     line-height: 1;
@@ -338,7 +338,7 @@ svg {
     font-size: 13px;
     margin-bottom: 8px;
     font-weight: 600;
-    color: #E03D99;
+    color: #ffffff;
 }
 
 .grafico-container {
@@ -375,7 +375,7 @@ svg {
 
 .cidade-card h4 {
     font-size: 15.6px;
-    color: #E03D99;
+    color: #ffffff;
     font-weight: 700;
     margin: 0;
     text-align: center;
@@ -575,7 +575,7 @@ svg {
 }
 
 .tooltip-content strong {
-    color: #E03D99;
+    color: #ffffff;
     display: block;
     margin-bottom: 5px;
 }
@@ -670,7 +670,7 @@ svg {
     .metrica-valor {
         font-size: 52px;
         margin-bottom: 6px;
-        color: #E03D99;
+        color: #ffffff;
         font-weight: 700;
     }
 
@@ -740,7 +740,7 @@ svg {
     .metrica-valor {
         font-size: 44px;
         margin-bottom: 6px;
-        color: #E03D99;
+        color: #ffffff;
         font-weight: 700;
     }
 
@@ -810,7 +810,7 @@ svg {
     .metrica-valor {
         font-size: 36px;
         margin-bottom: 6px;
-        color: #E03D99;
+        color: #ffffff;
         font-weight: 700;
     }
 
@@ -871,7 +871,7 @@ svg {
     .metrica-valor {
         font-size: 28px;
         margin-bottom: 4px;
-        color: #E03D99;
+        color: #ffffff;
         font-weight: 700;
     }
 
@@ -1265,7 +1265,7 @@ svg {
 }
 
 .ticker-label {
-    color: #E03D99;
+    color: #ffffff;
     font-weight: bold;
     font-size: clamp(12px, 2vw, 18px);
     text-transform: uppercase;
@@ -1340,7 +1340,7 @@ svg {
 .ticker-item-icon {
     width: 8px;
     height: 8px;
-    background-color: #E03D99;
+    background-color: #ffffff;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -1351,7 +1351,7 @@ svg {
 }
 
 .ticker-item-highlight {
-    color: #E03D99;
+    color: #ffffff;
     font-weight: bold;
 }
 
