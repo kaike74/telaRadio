@@ -1569,9 +1569,9 @@ function renderizarTicker(items) {
         } else if (typeof item === 'object') {
             const icon = item.icon ? `<span class="ticker-item-icon" style="background-color: ${item.color || '#E03D99'};"></span>` : '';
             const text = item.text || '';
-            const highlightColor = item.textColor || '#ffffff';
-            const highlight = item.highlight ? `<span class="ticker-item-highlight" style="color: ${highlightColor} !important;">${escapeHtml(item.highlight)}</span>` : '';
-            const textColor = item.textColor ? `color: ${item.textColor} !important;` : '';
+            // ⭐ MODIFICADO: Texto branco, cidade rosa e negrito
+            const highlight = item.highlight ? `<span class="ticker-item-highlight" style="color: #E03D99 !important; font-weight: bold;">${escapeHtml(item.highlight)}</span>` : '';
+            const textColor = 'color: #ffffff !important;'; // ⭐ Texto sempre branco
             
             conteudo = `
                 ${icon}
@@ -1899,7 +1899,7 @@ function atualizarTicker(dados) {
                     id: itemId,
                     icon: true,
                     text: mensagemTicker,
-                    textColor: '#ffffff', // ⭐ NOVO: Texto em branco
+                    textColor: '#ffffff', // ⭐ MODIFICADO: Texto branco
                     highlight: `${cidade}`,
                     color: '#E03D99'
                 });
@@ -1920,7 +1920,7 @@ function atualizarTicker(dados) {
                         text: informativoNova,
                         highlight: 'NOVA CAMPANHA',
                         color: '#FF6B9D', // ⭐ Rosa do ícone
-                        textColor: '#FF6B9D' // ⭐ Todo o texto em rosa
+                        textColor: '#ffffff' // ⭐ MODIFICADO: Texto branco
                     });
                     console.log(`   ✨ Informativo NOVA CAMPANHA adicionado: ${informativoNova}`);
                 }
@@ -1935,7 +1935,8 @@ function atualizarTicker(dados) {
                         icon: true,
                         text: mensagemMaiuscula,
                         highlight: `🎖️ ${milestone.tipo.toUpperCase()}`,
-                        color: '#FF6B9D' // Rosa escuro para milestones
+                        color: '#FF6B9D', // Rosa escuro para milestones
+                        textColor: '#ffffff' // ⭐ Texto branco
                     });
                     console.log(`   🏆 Informativo MILESTONE adicionado: ${mensagemMaiuscula}`);
                 }

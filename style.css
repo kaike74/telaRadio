@@ -1346,22 +1346,27 @@ svg {
 }
 
 .ticker-item-text {
-    color: #ffffff;
+    color: #ffffff !important;
     font-size: inherit;
 }
 
 .ticker-item-highlight {
-    color: #ffffff;
-    font-weight: bold;
+    color: #E03D99 !important;
+    font-weight: bold !important;
 }
 
-/* ⭐ NOVO: Estilo para campanha nova - texto todo em rosa */
-.ticker-item.nova-campanha,
-.ticker-item.nova-campanha .ticker-item-text,
-.ticker-item.nova-campanha .ticker-item-highlight {
-    color: #FF6B9D !important;
+/* ⭐ NOVO: Estilo para campanha nova - highlight em rosa */
+.ticker-item.nova-campanha {
     background: rgba(255, 107, 157, 0.15) !important;
     border-left-color: #FF6B9D !important;
+}
+
+.ticker-item.nova-campanha .ticker-item-text {
+    color: #ffffff !important;
+}
+
+.ticker-item.nova-campanha .ticker-item-highlight {
+    color: #FF6B9D !important;
 }
 
 /* Responsive adjustments for news ticker */
