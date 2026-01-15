@@ -1266,25 +1266,6 @@ function criarPinga(animacao, container, bounds) {
             pingtimeoutModo2.set(cidade, timeoutId);
         }
         
-        // Verificar se foi realmente adicionado
-        const verificacao = document.getElementById(animacao.id);
-        if (verificacao) {
-            const style = window.getComputedStyle(verificacao);
-            console.log(`   ✅ Pinga ADICIONADA ao DOM - ID: ${animacao.id}`);
-            console.log(`      Visibilidade CSS: position=${style.position}, left=${style.left}, top=${style.top}`);
-            console.log(`      Dimensões: width=${style.width}, height=${style.height}`);
-            console.log(`      display=${style.display}, visibility=${style.visibility}`);
-            console.log(`      ⏱️ Desaparecerá em ${DURACAO_PINGA_MS / 1000}s com fadeout de ${DURACAO_FADEOUT_MS}ms`);
-            console.log(`      📍 Container offset: top-left=(${container.offsetLeft}, ${container.offsetTop})`);
-        } else {
-            console.error(`   ❌ ERRO: Pinga NÃO foi adicionada ao DOM!`);
-            console.error(`      Tentou adicionar com ID: ${animacao.id}`);
-            console.error(`      Container: ${container.id} (classe: ${container.className})`);
-        }
-        
-        // ⭐ REMOVIDO: Conexão de pings próximos com linhas
-        // As linhas ficavam para trás, removidas conforme solicitado
-
     } catch (error) {
         console.error(`❌ ERRO ao criar pinga: ${error.message}`);
         console.error(`   Stack: ${error.stack}`);

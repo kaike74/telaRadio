@@ -1323,16 +1323,7 @@ function criarPinga(animacao, container, bounds) {
             
             pingtimeoutModo2.set(cidade, timeoutId);
         }
-                    console.log(`      📍 Container offset: top-left=(${container.offsetLeft}, ${container.offsetTop})`);
-        } else {
-            console.error(`   ❌ ERRO: Pinga NÃO foi adicionada ao DOM!`);
-            console.error(`      Tentou adicionar com ID: ${animacao.id}`);
-            console.error(`      Container: ${container.id} (classe: ${container.className})`);
-        }
         
-        // ⭐ REMOVIDO: Conexão de pings próximos com linhas
-        // As linhas ficavam para trás, removidas conforme solicitado
-
     } catch (error) {
         console.error(`❌ ERRO ao criar pinga: ${error.message}`);
         console.error(`   Stack: ${error.stack}`);
