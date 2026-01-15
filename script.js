@@ -330,37 +330,74 @@ function criarPingTesteBasilia() {
 // API - BUSCAR DADOS
 // =========================
 
+// ⭐ NOVO: Cache local para dados do dashboard
+let dashboardCache = null;
+let dashboardCacheTimestamp = null;
+
 async function buscarDashboardCompleto() {
-    try {
-        console.log('%c📊 Buscando dashboard completo...', 'color: #4ecdc4; font-weight: bold;');
+    const MAX_TENTATIVAS = 3;
+    const TIMEOUT_MS = 15000; // 15 segundos
+    
+    for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
+        try {
+            console.log(`%c📊 Buscando dashboard completo (tentativa ${tentativa}/${MAX_TENTATIVAS})...`, 'color: #4ecdc4; font-weight: bold;');
 
-        const response = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
+            // Criar um controller com timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+            const response = await fetch(`${CONFIG.API_BASE}/api/dashboard`, {
+                signal: controller.signal
+            });
 
-        const data = await response.json();
+            clearTimeout(timeoutId);
 
-        if (data.success) {
-            dashboardData = data;
-            console.log(`   ✅ Dashboard recebido com ${data.insercoesRecentes?.length || 0} inserções`);
-            if (data.debug) {
-                console.log(`   Debug:`, data.debug);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            renderizarDashboard(data);
-            return true;
-        } else {
-            console.error('❌ Erro nos dados:', data.error);
-            mostrarErro('Erro ao carregar dados do dashboard');
-            return false;
-        }
 
-    } catch (error) {
-        console.error('❌ Erro ao buscar dashboard:', error);
-        mostrarErro(`Erro de conexão: ${error.message}`);
-        return false;
+            const data = await response.json();
+
+            if (data.success) {
+                dashboardData = data;
+                // Salvar no cache
+                dashboardCache = data;
+                dashboardCacheTimestamp = Date.now();
+                
+                console.log(`   ✅ Dashboard recebido com ${data.insercoesRecentes?.length || 0} inserções`);
+                if (data.debug) {
+                    console.log(`   Debug:`, data.debug);
+                }
+                renderizarDashboard(data);
+                return true;
+            } else {
+                console.error('❌ Erro nos dados:', data.error);
+                throw new Error(data.error || 'Erro desconhecido');
+            }
+
+        } catch (error) {
+            console.warn(`⚠️ Tentativa ${tentativa} falhou:`, error.message);
+            
+            // Se foi a última tentativa, usar cache
+            if (tentativa === MAX_TENTATIVAS) {
+                if (dashboardCache) {
+                    console.log(`%c💾 Usando cache local do dashboard (${Math.round((Date.now() - dashboardCacheTimestamp) / 1000)}s atrás)`, 'color: #ff9800; font-weight: bold;');
+                    dashboardData = dashboardCache;
+                    renderizarDashboard(dashboardCache);
+                    return true;
+                } else {
+                    console.error('❌ Erro ao buscar dashboard e sem cache disponível');
+                    mostrarErro('Erro de conexão - tentando reconectar...');
+                    return false;
+                }
+            }
+            
+            // Aguardar antes de tentar novamente
+            await aguardar(2000 * tentativa); // 2s, 4s, etc.
+        }
     }
+    
+    return false;
 }
 
 // ⭐ NOVO: Limpeza Periódica de Memória
@@ -1316,8 +1353,8 @@ function coordenadasParaPixels(lat, lng) {
         y += offsetY;
 
         // ⭐ AJUSTE DE POSIÇÃO: Deslocar pings para compensar projeção e zoom 90%
-        // Ajuste: 4% para cima
-        const ajusteY = containerRect.height * -0.04; // -4% (para cima)
+        // Ajuste: 2% para cima
+        const ajusteY = containerRect.height * -0.02; // -2% (para cima)
         const ajusteX = containerRect.width * 0.0;    // Sem ajuste horizontal
         
         y += ajusteY;
