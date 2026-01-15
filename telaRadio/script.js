@@ -1198,6 +1198,10 @@ function coordenadasParaPixels(lat, lng) {
         x += offsetX;
         y += offsetY;
 
+        // ⭐ NOVO: Mover pings 3% para cima
+        const deslocamentoParaCima = containerRect.height * 0.03;
+        y -= deslocamentoParaCima;
+
         // Debug para verificar conversões
         if (window.DEBUG_COORDS) {
             console.log(`📍 Coordenadas:`, {
