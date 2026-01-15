@@ -1253,15 +1253,13 @@ function coordenadasParaPixels(lat, lng) {
         x += offsetX;
         y += offsetY;
 
-        // ⭐ NOVO: Ajuste adaptativo baseado na latitude
-        // Latitudes mais ao norte (positivas) têm menos deslocamento
-        // Latitudes mais ao sul (negativas) têm mais deslocamento
-        const latNormalizado = (lat - geoMinLat) / (geoMaxLat - geoMinLat); // 0 a 1
-        const deslocamentoAdaptativo = containerRect.height * (0.02 + latNormalizado * 0.04); // 2% a 6%
-        const deslocamentoParaDireita = containerRect.width * 0.01;
+        // ⭐ AJUSTE DE POSIÇÃO: Deslocar pings para compensar projeção e zoom 90%
+        // Pings estão 10% para baixo, então mover 10% para CIMA
+        const ajusteY = containerRect.height * -0.10; // -10% (para cima)
+        const ajusteX = containerRect.width * 0.0;    // Sem ajuste horizontal
         
-        y += deslocamentoAdaptativo;
-        x += deslocamentoParaDireita;
+        y += ajusteY;
+        x += ajusteX;
 
         // Debug para verificar conversões
         if (window.DEBUG_COORDS) {
