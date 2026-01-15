@@ -1253,10 +1253,14 @@ function coordenadasParaPixels(lat, lng) {
         x += offsetX;
         y += offsetY;
 
-        // ⭐ MODIFICADO: Deslocar pings 10% para baixo e 2% para direita (ajustes TV)
-        const deslocamentoParaBaixo = containerRect.height * 0.10;
-        const deslocamentoParaDireita = containerRect.width * 0.02;
-        y += deslocamentoParaBaixo;
+        // ⭐ NOVO: Ajuste adaptativo baseado na latitude
+        // Latitudes mais ao norte (positivas) têm menos deslocamento
+        // Latitudes mais ao sul (negativas) têm mais deslocamento
+        const latNormalizado = (lat - geoMinLat) / (geoMaxLat - geoMinLat); // 0 a 1
+        const deslocamentoAdaptativo = containerRect.height * (0.02 + latNormalizado * 0.04); // 2% a 6%
+        const deslocamentoParaDireita = containerRect.width * 0.01;
+        
+        y += deslocamentoAdaptativo;
         x += deslocamentoParaDireita;
 
         // Debug para verificar conversões
