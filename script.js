@@ -159,6 +159,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar mapa
     inicializarMapa();
 
+    // ⭐ NOVO: Criar ping de teste em Brasília
+    criarPingTesteBasilia();
+
     // Inicializar ticker de notícias
     renderizarTicker(['Monitorando inserções em tempo real...']);
 
@@ -273,6 +276,54 @@ function inicializarMapa() {
     // O SVG é carregado automaticamente via <img src="mapa-brasil.svg">
     // A biblioteca já insere o SVG real no elemento mapa-brasil
     console.log('🗺️ Mapa do Brasil carregado (mapa-brasil.svg)');
+}
+
+/**
+ * ⭐ NOVO: Criar ping de teste fixo em Brasília (DF)
+ * Para testes do sistema de pings
+ */
+function criarPingTesteBasilia() {
+    try {
+        // Agendar criação do ping para depois que o mapa estiver pronto
+        setTimeout(() => {
+            const container = document.getElementById('animacoes-layer');
+            const mapaContainer = document.getElementById('mapa-container');
+            
+            if (!container || !mapaContainer) {
+                console.warn('⚠️ Containers do mapa não encontrados, pulando ping de teste');
+                return;
+            }
+            
+            // Coordenadas de Brasília (DF)
+            const animacaoTeste = {
+                id: 'ping-teste-brasilia',
+                lat: -15.7897,
+                lng: -47.8822,
+                dados: {
+                    emissora: 'Rádio Testizinho (FM)',
+                    cidade: 'Brasília',
+                    uf: 'DF',
+                    cliente: 'TESTE',
+                    horario: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                    campanha: 'Ping de Teste'
+                }
+            };
+            
+            const bounds = mapaContainer.getBoundingClientRect();
+            
+            // Criar o ping
+            criarPinga(animacaoTeste, container, bounds);
+            
+            console.log('✅ Ping de teste em Brasília criado');
+            console.log('   ID: ping-teste-brasilia');
+            console.log('   Nome: Rádio Testizinho');
+            console.log('   Localização: Brasília (DF)');
+            
+        }, 500); // Aguardar 500ms para o mapa estar pronto
+        
+    } catch (error) {
+        console.error('❌ Erro ao criar ping de teste:', error);
+    }
 }
 
 // =========================
