@@ -1094,7 +1094,27 @@ async function buscarCoordenadaECriarPinga(insercao, pingaId, tickerId) {
 
 async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
     try {
-        console.log(`🎯 criarPingaComCoordenada: ${insercao.city} em (${coordenada.lat}, ${coordenada.lng})`);
+        const coordStr = `${coordenada.lat.toFixed(4)}, ${coordenada.lng.toFixed(4)}`;
+        console.log(`🎯 criarPingaComCoordenada: ${insercao.city} em (${coordStr})`);
+        
+        // 🔍 DEBUG: Rastrear Brasília
+        if (insercao.city === 'Brasília' || insercao.city === 'BRASILIA' || insercao.city === 'Brasilia') {
+            console.warn(`⚠️ BRASÍLIA DETECTADA: ${insercao.city} | Coords: (${coordenada.lat}, ${coordenada.lng}) | ID: ${pingaId}`);
+            
+            // Adicionar ao debug global
+            if (!window.debugBrasilia) {
+                window.debugBrasilia = [];
+            }
+            window.debugBrasilia.push({
+                id: pingaId,
+                city: insercao.city,
+                lat: coordenada.lat,
+                lng: coordenada.lng,
+                timestamp: new Date().toLocaleTimeString('pt-BR')
+            });
+            
+            console.table(window.debugBrasilia);
+        }
         
         // Criar animação com os dados da insercão e coordenada
         // ⭐ NOVO: Formatar horário para exibir apenas HH:MM sem segundos
@@ -1164,13 +1184,14 @@ function criarPinga(animacao, container, bounds) {
         pinga.style.zIndex = '100';
         pinga.style.position = 'absolute';
 
-        // Badge permanente muito transparente - SEM HORÁRIO, apenas emissora e cidade
+        // Badge permanente muito transparente - COM HORÁRIO, emissora e cidade
         const emissora = animacao.dados.emissora.split('(')[0].trim();
         pinga.innerHTML = `
         <div class="pinga-circle"></div>
         <div class="pinga-ripple"></div>
         <div class="label-permanente">
             <div class="label-content">
+                <div class="label-horario">${animacao.dados.horario}</div>
                 <div class="label-emissora">${emissora}</div>
                 <div class="label-cidade">${animacao.dados.cidade}</div>
             </div>
@@ -1183,7 +1204,33 @@ function criarPinga(animacao, container, bounds) {
         console.log(`✅ PINGA CRIADO: ${animacao.dados.emissora} em ${animacao.dados.cidade}`);
         console.log(`   Total de pings ativos: ${animacoesAtivas.size}`);
         
-        // ⭐ MODIFICADO: Pings nunca somem - modo teste com todos os locais permanentes
+        // ⭐ NOVO: Remover pinga automaticamente após 30 segundos com fadeout
+        // ⭐ EXCEÇÃO: Ping de teste em Brasília fica permanentemente
+        const DURACAO_PINGA_MS = 30000; // 30 segundos
+        const DURACAO_FADEOUT_MS = 800; // 0.8 segundos
+        
+        // Não remover ping de teste
+        if (animacao.id !== 'ping-teste-brasilia') {
+            setTimeout(() => {
+                const pingElement = document.getElementById(animacao.id);
+                if (pingElement) {
+                    if (CONFIG.VERBOSE_LOGS) {
+                        console.log(`   ⏰ Iniciando fadeout do pinga: ${animacao.id}`);
+                    }
+
+                    pingElement.classList.add('fade-out');
+                    
+                    setTimeout(() => {
+                        if (pingElement.parentNode) {
+                            pingElement.remove();
+                            animacoesAtivas.delete(animacao.id);
+                            console.log(`   🗑️ Pinga removido do DOM: ${animacao.id}`);
+                            console.log(`   📍 Total no mapa agora: ${animacoesAtivas.size}`);
+                        }
+                    }, DURACAO_FADEOUT_MS);
+                }
+            }, DURACAO_PINGA_MS);
+        }
         
         // Verificar se foi realmente adicionado
         const verificacao = document.getElementById(animacao.id);
@@ -1193,12 +1240,16 @@ function criarPinga(animacao, container, bounds) {
             console.log(`      Visibilidade CSS: position=${style.position}, left=${style.left}, top=${style.top}`);
             console.log(`      Dimensões: width=${style.width}, height=${style.height}`);
             console.log(`      display=${style.display}, visibility=${style.visibility}`);
+            console.log(`      ⏱️ Desaparecerá em ${DURACAO_PINGA_MS / 1000}s com fadeout de ${DURACAO_FADEOUT_MS}ms`);
             console.log(`      📍 Container offset: top-left=(${container.offsetLeft}, ${container.offsetTop})`);
         } else {
             console.error(`   ❌ ERRO: Pinga NÃO foi adicionada ao DOM!`);
             console.error(`      Tentou adicionar com ID: ${animacao.id}`);
             console.error(`      Container: ${container.id} (classe: ${container.className})`);
         }
+        
+        // ⭐ REMOVIDO: Conexão de pings próximos com linhas
+        // As linhas ficavam para trás, removidas conforme solicitado
 
     } catch (error) {
         console.error(`❌ ERRO ao criar pinga: ${error.message}`);
@@ -2015,9 +2066,10 @@ function atualizarTicker(dados) {
                     console.log(`   🏆 Informativo MILESTONE adicionado: ${mensagemMaiuscula}`);
                 }
                 
-                // ⭐ MODIFICADO: Criar pinga para TODAS as inserções (não apenas as novas)
-                // Objetivo: Mostrar mapa completo com TODOS os pings do dia
-                criarPingaDoTicker(insercao, itemId);
+                // ⭐ MODIFICADO: Criar pinga APENAS se for inserção nova
+                if (isNova) {
+                    criarPingaDoTicker(insercao, itemId);
+                }
                 
                 // ⏰ Configurar auto-remove em 120 segundos
                 configurarAutoRemoveTicker(itemId);
