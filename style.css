@@ -480,10 +480,10 @@ svg {
 /* Animações no Mapa */
 .pinga {
     position: absolute;
-    width: clamp(4px, 0.4vw, 6px);
-    height: clamp(4px, 0.4vw, 6px);
-    margin-left: calc(clamp(4px, 0.4vw, 6px) / -2);
-    margin-top: calc(clamp(4px, 0.4vw, 6px) / -2);
+    width: clamp(5px, 0.55vw, 8px);
+    height: clamp(5px, 0.55vw, 8px);
+    margin-left: calc(clamp(5px, 0.55vw, 8px) / -2);
+    margin-top: calc(clamp(5px, 0.55vw, 8px) / -2);
     pointer-events: auto;
     cursor: pointer;
 }
@@ -1062,10 +1062,10 @@ svg {
     }
 
     .pinga {
-        width: 5px;
-        height: 5px;
-        margin-left: -2.5px;
-        margin-top: -2.5px;
+        width: 7px;
+        height: 7px;
+        margin-left: -3.5px;
+        margin-top: -3.5px;
     }
 
     .grafico-label {
@@ -1168,10 +1168,10 @@ svg {
     }
 
     .pinga {
-        width: 8px;
-        height: 8px;
-        margin-left: -4px;
-        margin-top: -4px;
+        width: 11px;
+        height: 11px;
+        margin-left: -5.5px;
+        margin-top: -5.5px;
     }
 
     .pinga-ripple {
@@ -1238,10 +1238,10 @@ svg {
     }
 
     .pinga {
-        width: 10px;
-        height: 10px;
-        margin-left: -5px;
-        margin-top: -5px;
+        width: 14px;
+        height: 14px;
+        margin-left: -7px;
+        margin-top: -7px;
     }
 
     .footer-info {
