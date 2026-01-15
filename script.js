@@ -1316,8 +1316,8 @@ function coordenadasParaPixels(lat, lng) {
         y += offsetY;
 
         // ⭐ AJUSTE DE POSIÇÃO: Deslocar pings para compensar projeção e zoom 90%
-        // Pings estão 10% para baixo, então mover 10% para CIMA
-        const ajusteY = containerRect.height * -0.10; // -10% (para cima)
+        // Ajuste reduzido: 6% para cima
+        const ajusteY = containerRect.height * -0.06; // -6% (para cima)
         const ajusteX = containerRect.width * 0.0;    // Sem ajuste horizontal
         
         y += ajusteY;
