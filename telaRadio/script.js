@@ -1253,9 +1253,9 @@ function coordenadasParaPixels(lat, lng) {
         x += offsetX;
         y += offsetY;
 
-        // ⭐ NOVO: Mover pings 3% para cima
-        const deslocamentoParaCima = containerRect.height * 0.03;
-        y -= deslocamentoParaCima;
+        // ⭐ MODIFICADO: Deslocar pings 5% para baixo
+        const deslocamentoParaBaixo = containerRect.height * 0.05;
+        y += deslocamentoParaBaixo;
 
         // Debug para verificar conversões
         if (window.DEBUG_COORDS) {
