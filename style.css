@@ -613,6 +613,13 @@ svg {
     font-size: clamp(6px, 0.65vw, 8px);
 }
 
+.label-horario {
+    font-weight: 600;
+    color: #FFD93D;
+    font-size: clamp(5px, 0.6vw, 7px);
+    margin-bottom: 2px;
+}
+
 .label-cidade {
     font-size: clamp(5px, 0.6vw, 7px);
     color: #FFB6D9;
@@ -1046,6 +1053,10 @@ svg {
         font-size: 8px;
     }
 
+    .label-horario {
+        font-size: 7px;
+    }
+
     .label-cidade {
         font-size: 7px;
     }
@@ -1146,6 +1157,10 @@ svg {
 
     .label-emissora {
         font-size: 12px;
+    }
+
+    .label-horario {
+        font-size: 10px;
     }
 
     .label-cidade {

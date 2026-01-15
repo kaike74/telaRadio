@@ -734,13 +734,13 @@ function renderizarListaInsercoes(insercoes) {
     const top10 = insercoesFiltradas.slice(0, 10);
     console.log(`   📍 Top 10 selecionadas (de ${insercoesFiltradas.length})`);
     const listaHTML = top10.map((insercao, index) => {
-        // ⭐ HORÁRIO REMOVIDO: Não mostrar hora na tabela lateral
-        // A conversão de horário agora é apenas no ticker
+        // ⭐ MODIFICADO: Agora mostrando hora na tabela lateral
         
         return `
         <div class="insercao-item ${index < 3 ? 'nova' : ''}" data-hora="${insercao.hour}">
             <div class="insercao-header">
                 <div class="insercao-radio">${truncarTexto(insercao.stationName, 25)}</div>
+                <div class="insercao-hora">${insercao.hour || 'N/A'}</div>
             </div>
             <div class="insercao-detalhes">
                 ${insercao.city}${insercao.uf ? '/' + insercao.uf : ''}
@@ -1072,13 +1072,14 @@ function criarPinga(animacao, container, bounds) {
         pinga.style.zIndex = '100';
         pinga.style.position = 'absolute';
 
-        // Badge permanente muito transparente - sem horário, apenas emissora e cidade
+        // Badge permanente muito transparente - COM HORÁRIO, emissora e cidade
         const emissora = animacao.dados.emissora.split('(')[0].trim();
         pinga.innerHTML = `
         <div class="pinga-circle"></div>
         <div class="pinga-ripple"></div>
         <div class="label-permanente">
             <div class="label-content">
+                <div class="label-horario">${animacao.dados.horario}</div>
                 <div class="label-emissora">${emissora}</div>
                 <div class="label-cidade">${animacao.dados.cidade}</div>
             </div>
