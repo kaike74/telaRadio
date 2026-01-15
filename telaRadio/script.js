@@ -1105,14 +1105,13 @@ function criarPinga(animacao, container, bounds) {
         pinga.style.zIndex = '100';
         pinga.style.position = 'absolute';
 
-        // Badge permanente muito transparente - COM HORÁRIO, emissora e cidade
+        // Badge permanente muito transparente - SEM HORÁRIO, apenas emissora e cidade
         const emissora = animacao.dados.emissora.split('(')[0].trim();
         pinga.innerHTML = `
         <div class="pinga-circle"></div>
         <div class="pinga-ripple"></div>
         <div class="label-permanente">
             <div class="label-content">
-                <div class="label-horario">${animacao.dados.horario}</div>
                 <div class="label-emissora">${emissora}</div>
                 <div class="label-cidade">${animacao.dados.cidade}</div>
             </div>
@@ -1967,10 +1966,9 @@ function atualizarTicker(dados) {
                     console.log(`   🏆 Informativo MILESTONE adicionado: ${mensagemMaiuscula}`);
                 }
                 
-                // ⭐ MODIFICADO: Criar pinga APENAS se for inserção nova
-                if (isNova) {
-                    criarPingaDoTicker(insercao, itemId);
-                }
+                // ⭐ MODIFICADO: Criar pinga para TODAS as inserções (não apenas as novas)
+                // Objetivo: Mostrar mapa completo com TODOS os pings do dia
+                criarPingaDoTicker(insercao, itemId);
                 
                 // ⏰ Configurar auto-remove em 120 segundos
                 configurarAutoRemoveTicker(itemId);
