@@ -1122,33 +1122,10 @@ function criarPinga(animacao, container, bounds) {
         container.appendChild(pinga);
         animacoesAtivas.set(animacao.id, pinga);
         
-        // ⭐ NOVO: Remover pinga automaticamente após 30 segundos com fadeout
-        // ⭐ EXCEÇÃO: Ping de teste em Brasília fica permanentemente
-        const DURACAO_PINGA_MS = 30000; // 30 segundos
-        const DURACAO_FADEOUT_MS = 800; // 0.8 segundos
+        console.log(`✅ PINGA CRIADO: ${animacao.dados.emissora} em ${animacao.dados.cidade}`);
+        console.log(`   Total de pings ativos: ${animacoesAtivas.size}`);
         
-        // Não remover ping de teste
-        if (animacao.id !== 'ping-teste-brasilia') {
-            setTimeout(() => {
-                const pingElement = document.getElementById(animacao.id);
-                if (pingElement) {
-                    if (CONFIG.VERBOSE_LOGS) {
-                        console.log(`   ⏰ Iniciando fadeout do pinga: ${animacao.id}`);
-                    }
-
-                    pingElement.classList.add('fade-out');
-                    
-                    setTimeout(() => {
-                        if (pingElement.parentNode) {
-                            pingElement.remove();
-                            animacoesAtivas.delete(animacao.id);
-                            console.log(`   🗑️ Pinga removido do DOM: ${animacao.id}`);
-                            console.log(`   📍 Total no mapa agora: ${animacoesAtivas.size}`);
-                        }
-                    }, DURACAO_FADEOUT_MS);
-                }
-            }, DURACAO_PINGA_MS);
-        }
+        // ⭐ MODIFICADO: Pings nunca somem - modo teste com todos os locais permanentes
         
         // Verificar se foi realmente adicionado
         const verificacao = document.getElementById(animacao.id);
