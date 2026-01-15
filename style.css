@@ -508,6 +508,15 @@ svg {
     transform: translate(-50%, -50%);
     animation: ripple 2s ease-out infinite;
 }
+
+/* ========================================
+   MODO 2: PINGA COM COR AZUL
+   ======================================== */
+.pinga-modo-2 .pinga-circle {
+    background: #5A5FFF;
+    box-shadow: 0 0 10px #5A5FFF, 0 0 20px rgba(90, 95, 255, 0.4);
+}
+
 /* Badge label - REMOVIDO (não utilizado) */
 
 @keyframes pulsePing {
@@ -624,6 +633,28 @@ svg {
     font-size: clamp(5px, 0.6vw, 7px);
     color: #FFB6D9;
     margin-top: 0px;
+}
+
+/* ========================================
+   MODO 2: LABEL AGREGADO (Apenas Cidade)
+   ======================================== */
+.label-cidade-contador {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: clamp(6px, 0.7vw, 9px);
+    color: #FFB6D9;
+    font-weight: 500;
+}
+
+.label-cidade-contador .contador {
+    display: none;
+    background: rgba(224, 61, 153, 0.3);
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-weight: 700;
+    color: #FFD93D;
+    font-size: clamp(5px, 0.55vw, 7px);
 }
 
 /* Linha conectora para múltiplos pings próximos */
