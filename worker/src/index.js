@@ -1373,7 +1373,18 @@ async function handleCoordenada(env, corsHeaders, url) {
             });
         }
 
-        const result = data.geonames[0];
+        // 🔧 FIX: Para Brasília, sempre pegar a capital (que é a maior/principal)
+        let result = data.geonames[0];
+        if ((cidade.toLowerCase() === 'brasília' || cidade.toLowerCase() === 'brasilia') && data.geonames.length > 1) {
+            // Se houver múltiplos resultados para Brasília, pegar o de maior população (que é a capital)
+            result = data.geonames.reduce((prev, current) => {
+                const prevPop = parseInt(prev.population || 0);
+                const currPop = parseInt(current.population || 0);
+                return currPop > prevPop ? current : prev;
+            });
+            console.log(`📍 Brasília: Selecionada a capital entre ${data.geonames.length} resultados (população: ${result.population})`);
+        }
+
         const coordenada = {
             lat: parseFloat(result.lat),
             lng: parseFloat(result.lng),
