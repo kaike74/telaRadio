@@ -734,13 +734,14 @@ function renderizarListaInsercoes(insercoes) {
     const top10 = insercoesFiltradas.slice(0, 10);
     console.log(`   📍 Top 10 selecionadas (de ${insercoesFiltradas.length})`);
     const listaHTML = top10.map((insercao, index) => {
-        // ⭐ MODIFICADO: Agora mostrando hora na tabela lateral
+        // ⭐ MODIFICADO: Mostrar tempo relativo "Xm atrás" desde o início
+        const tempoRelativo = calcularTempoRelativo(insercao.hour);
         
         return `
         <div class="insercao-item ${index < 3 ? 'nova' : ''}" data-hora="${insercao.hour}">
             <div class="insercao-header">
                 <div class="insercao-radio">${truncarTexto(insercao.stationName, 25)}</div>
-                <div class="insercao-hora">${insercao.hour || 'N/A'}</div>
+                <div class="insercao-hora">${tempoRelativo}</div>
             </div>
             <div class="insercao-detalhes">
                 ${insercao.city}${insercao.uf ? '/' + insercao.uf : ''}
@@ -1008,6 +1009,9 @@ async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
         console.log(`🎯 criarPingaComCoordenada: ${insercao.city} em (${coordenada.lat}, ${coordenada.lng})`);
         
         // Criar animação com os dados da insercão e coordenada
+        // ⭐ NOVO: Formatar horário para exibir apenas HH:MM sem segundos
+        const horarioFormatado = insercao.hour ? insercao.hour.substring(0, 5) : 'N/A';
+        
         const animacao = {
             id: pingaId,
             lat: parseFloat(coordenada.lat),
@@ -1017,7 +1021,7 @@ async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
                 cidade: insercao.city || 'N/A',
                 uf: insercao.uf || 'N/A',
                 cliente: insercao.client || 'N/A',
-                horario: insercao.hour || 'N/A',
+                horario: horarioFormatado,
                 campanha: insercao.campaign || 'N/A'
             },
             origem: 'ticker'
