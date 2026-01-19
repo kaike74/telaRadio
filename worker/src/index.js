@@ -153,16 +153,15 @@ async function handleDashboard(env, corsHeaders) {
 
         console.log(`⏰ HORÁRIO BRASÍLIA: ${dataHoje} ${horaAtual}:${minutoAtual}`);
 
-        // 🔄 SISTEMA DE CACHE INTELIGENTE - SUPER SIMPLIFICADO
-        // 1️⃣ Se tem cache: retorna RÁPIDO com dados vazio
-        // 2️⃣ Se não tem cache: tenta buscar (pode demorar)
+        // 🔄 SISTEMA DE CACHE INTELIGENTE - RÁPIDO COM INSERÇÕES
+        // 1️⃣ Buscar cache (rápido)
+        // 2️⃣ Tentar buscar inserções (com timeout)
         
         let todasCampanhas, campanhasAtivas, emissorasProgramadas;
         let cacheStatus = "FRESH";
 
-        // ⏱️ TIMEOUT TOTAL: 20 segundos (fallback rápido)
-        const startTime = Date.now();
-        const TIMEOUT_TOTAL = 20000;
+        // ⏱️ TIMEOUT para inserções: 10 segundos (rápido, não trava)
+        const TIMEOUT_INSERCOES = 10000;
 
     // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache) - SUPER RÁPIDO
     if (env.DASHBOARD_KV) {
@@ -170,45 +169,13 @@ async function handleDashboard(env, corsHeaders) {
             const cacheDadosEstaticos = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
             
             if (cacheDadosEstaticos) {
-                // ✅ Cache válido - RETORNAR RAPIDINHO SEM BUSCAR MAIS NADA
+                // ✅ Cache válido - carregar dados
                 const parsed = JSON.parse(cacheDadosEstaticos);
+                todasCampanhas = parsed.todasCampanhas;
+                campanhasAtivas = parsed.campanhasAtivas;
+                emissorasProgramadas = parsed.emissorasProgramadas;
                 cacheStatus = "FROM_24H_CACHE";
-                console.log(`✅ Cache encontrado - retornando dados rápido`);
-                
-                // Retornar resultado vazio rapidinho (sem buscar inserções que demora)
-                const resultado = {
-                    success: true,
-                    timestamp: new Date().toISOString(),
-                    fromCache: true,
-                    cacheStatus: "FROM_24H_CACHE_RÁPIDO",
-                    metricas: {
-                        insercoesHoje: 0,
-                        campanhasAtivas: parsed.campanhasAtivas?.length || 0,
-                        emissorasUnicas: parsed.emissorasProgramadas?.length || 0,
-                        topCidades: [],
-                        topEmissoras: []
-                    },
-                    coordenadas: [],
-                    insercoesRecentes: [],
-                    debug: {
-                        totalCampanhas: parsed.todasCampanhas?.length || 0,
-                        campanhasAtivas: parsed.campanhasAtivas?.length || 0,
-                        emissorasProgramadas: parsed.emissorasProgramadas?.length || 0,
-                        totalInsercoes: 0,
-                        insercoesRecentes: 0,
-                        horaProcessamento: `${horaAtual}:${minutoAtual}`,
-                        cacheStrategy: "CACHE_RÁPIDO - SEM BUSCAR INSERÇÕES"
-                    }
-                };
-
-                return new Response(JSON.stringify(resultado, null, 2), {
-                    headers: {
-                        ...corsHeaders,
-                        "Content-Type": "application/json",
-                        "X-Cache-Status": "FROM_CACHE",
-                        "Cache-Control": "no-cache, no-store, must-revalidate"
-                    }
-                });
+                console.log(`✅ Cache encontrado`);
             } else {
                 // ❌ Cache expirado - retornar vazio
                 console.log(`⏳ Cache de 24h expirado`);
@@ -223,13 +190,59 @@ async function handleDashboard(env, corsHeaders) {
         return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
     }
 
-    // Esse código abaixo NÃO É EXECUTADO se tiver cache
     if (campanhasAtivas.length === 0) {
         return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
     }
 
     console.log(`🎯 ${campanhasAtivas.length} campanhas ativas`);
     console.log(`📻 ${emissorasProgramadas.length} emissoras programadas`);
+
+    // 2️⃣ BUSCAR INSERÇÕES COM TIMEOUT CURTO (10 segundos)
+    let insercoesRecentes = [];
+    let todasInsercoes = [];
+    
+    try {
+        // Promise que resolve em 10s ou timeout
+        const promiseInsercoes = buscarInsercoes(
+            campanhasAtivas,
+            dataHoje,
+            horaNum,
+            minutoNum
+        );
+        
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('TIMEOUT_INSERCOES')), TIMEOUT_INSERCOES)
+        );
+        
+        try {
+            const resultado = await Promise.race([promiseInsercoes, timeoutPromise]);
+            insercoesRecentes = resultado.insercoesRecentes || [];
+            todasInsercoes = resultado.todasInsercoes || [];
+            console.log(`✅ Inserções obtidas: ${insercoesRecentes.length}`);
+        } catch (timeoutError) {
+            console.warn(`⏱️ Timeout ao buscar inserções (${TIMEOUT_INSERCOES}ms) - continuando sem elas`);
+            // Continuar sem inserções
+        }
+    } catch (error) {
+        console.warn(`⚠️ Erro ao buscar inserções: ${error.message}`);
+    }
+
+    // 3️⃣ PROCESSAR COORDENADAS (somente se tiver inserções)
+    let coordenadas = [];
+    if (insercoesRecentes.length > 0) {
+        try {
+            coordenadas = await processarCoordenadas(
+                insercoesRecentes,
+                env.DASHBOARD_KV,
+                dataHoje
+            );
+        } catch (error) {
+            console.warn(`⚠️ Erro ao processar coordenadas: ${error.message}`);
+        }
+    }
+
+    // 4️⃣ CALCULAR MÉTRICAS
+    const metricas = calcularMetricas(
 
     // Verificar timeout
     if (Date.now() - startTime > TIMEOUT_TOTAL) {
