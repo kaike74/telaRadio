@@ -10,10 +10,9 @@ kv_namespaces = [
   { binding = "DASHBOARD_KV", id = "598948c19c524ab3af65831cd8f6278f" }
 ]
 
-# Routes - Configure com seu domínio do Cloudflare Pages
-# routes = [
-#   { pattern = "dashboard.seudominio.com/api/*", zone_name = "seudominio.com" }
-# ]
+# ⏰ SCHEDULED WORKER - Busca inserções a cada 5 minutos
+[triggers]
+crons = ["*/5 * * * *"]
 
 [build]
 command = ""
@@ -21,10 +20,13 @@ command = ""
 [build.upload]
 format = "service-worker"
 
-# Variáveis de ambiente (use secrets para valores sensíveis)
+# Ambiente de produção
 [env.production]
 name = "dashboard-radio-worker"
 
 # Para configurar secrets (API keys), use:
-# wrangler secret put API_KEY
+# wrangler secret put AUDIENCY_API_KEY
 # wrangler secret put GEONAMES_USERNAME
+
+
+

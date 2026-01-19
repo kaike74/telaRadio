@@ -153,15 +153,11 @@ async function handleDashboard(env, corsHeaders) {
 
         console.log(`⏰ HORÁRIO BRASÍLIA: ${dataHoje} ${horaAtual}:${minutoAtual}`);
 
-        // 🔄 SISTEMA DE CACHE INTELIGENTE - RÁPIDO COM INSERÇÕES
-        // 1️⃣ Buscar cache (rápido)
-        // 2️⃣ Tentar buscar inserções (com timeout)
+        // 🔄 SISTEMA DE CACHE INTELIGENTE - SEM BUSCAR INSERÇÕES
+        // Inserções são carregadas pelo Scheduled Worker a cada 5 minutos
         
         let todasCampanhas, campanhasAtivas, emissorasProgramadas;
         let cacheStatus = "FRESH";
-
-        // ⏱️ TIMEOUT para inserções: 10 segundos (rápido, não trava)
-        const TIMEOUT_INSERCOES = 10000;
 
     // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache) - SUPER RÁPIDO
     if (env.DASHBOARD_KV) {
@@ -175,7 +171,7 @@ async function handleDashboard(env, corsHeaders) {
                 campanhasAtivas = parsed.campanhasAtivas;
                 emissorasProgramadas = parsed.emissorasProgramadas;
                 cacheStatus = "FROM_24H_CACHE";
-                console.log(`✅ Cache encontrado`);
+                console.log(`✅ Dados estáticos carregados`);
             } else {
                 // ❌ Cache expirado - retornar vazio
                 console.log(`⏳ Cache de 24h expirado`);
@@ -197,34 +193,24 @@ async function handleDashboard(env, corsHeaders) {
     console.log(`🎯 ${campanhasAtivas.length} campanhas ativas`);
     console.log(`📻 ${emissorasProgramadas.length} emissoras programadas`);
 
-    // 2️⃣ BUSCAR INSERÇÕES COM TIMEOUT CURTO (10 segundos)
+    // 2️⃣ CARREGAR INSERÇÕES DO CACHE (carregado pelo Scheduled Worker)
     let insercoesRecentes = [];
     let todasInsercoes = [];
     
     try {
-        // Promise que resolve em 10s ou timeout
-        const promiseInsercoes = buscarInsercoes(
-            campanhasAtivas,
-            dataHoje,
-            horaNum,
-            minutoNum
-        );
+        const insercoesCacheRaw = await env.DASHBOARD_KV.get(`insercoes-cache-${dataHoje}`);
         
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('TIMEOUT_INSERCOES')), TIMEOUT_INSERCOES)
-        );
-        
-        try {
-            const resultado = await Promise.race([promiseInsercoes, timeoutPromise]);
-            insercoesRecentes = resultado.insercoesRecentes || [];
-            todasInsercoes = resultado.todasInsercoes || [];
-            console.log(`✅ Inserções obtidas: ${insercoesRecentes.length}`);
-        } catch (timeoutError) {
-            console.warn(`⏱️ Timeout ao buscar inserções (${TIMEOUT_INSERCOES}ms) - continuando sem elas`);
-            // Continuar sem inserções
+        if (insercoesCacheRaw) {
+            const insercoesCacheData = JSON.parse(insercoesCacheRaw);
+            insercoesRecentes = insercoesCacheData.insercoesRecentes || [];
+            todasInsercoes = insercoesCacheData.todasInsercoes || [];
+            console.log(`✅ Inserções carregadas do cache: ${insercoesRecentes.length} recentes, ${todasInsercoes.length} total`);
+        } else {
+            console.warn(`⚠️ Cache de inserções não encontrado - Scheduled Worker ainda não rodou`);
+            // Continuar mesmo sem inserções
         }
     } catch (error) {
-        console.warn(`⚠️ Erro ao buscar inserções: ${error.message}`);
+        console.warn(`⚠️ Erro ao carregar inserções do cache: ${error.message}`);
     }
 
     // 3️⃣ PROCESSAR COORDENADAS (somente se tiver inserções)
