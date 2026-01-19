@@ -65,6 +65,42 @@ export default {
                 }), {
                     headers: { "Content-Type": "application/json" }
                 });
+            } else if (url.pathname === "/api/debug/kv") {
+                // 🔍 DEBUG: Mostrar status do KV
+                let kvStatus = "SEM_KV";
+                let cacheData = null;
+                
+                try {
+                    if (env.DASHBOARD_KV) {
+                        const agora = new Date();
+                        const offsetBrasilia = -3 * 60;
+                        const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
+                        const dataHoje = agoraBrasilia.toISOString().split('T')[0];
+                        
+                        const cache = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
+                        if (cache) {
+                            kvStatus = "COM_DADOS";
+                            const parsed = JSON.parse(cache);
+                            cacheData = {
+                                campanhas: parsed.todasCampanhas?.length || 0,
+                                emissoras: parsed.emissorasProgramadas?.length || 0,
+                                salvoEm: parsed.salvoEm
+                            };
+                        } else {
+                            kvStatus = "VAZIO";
+                        }
+                    }
+                } catch (error) {
+                    kvStatus = `ERRO: ${error.message}`;
+                }
+                
+                response = new Response(JSON.stringify({
+                    status: kvStatus,
+                    dados: cacheData,
+                    timestamp: new Date().toISOString()
+                }), {
+                    headers: { "Content-Type": "application/json" }
+                });
             } else if (url.pathname === "/api/dashboard") {
                 response = await handleDashboard(env, corsHeaders);
             } else if (url.pathname === "/api/insercoes/recentes") {
