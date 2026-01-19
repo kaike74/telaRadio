@@ -679,7 +679,7 @@ let dashboardCacheTimestamp = null;
 
 async function buscarDashboardCompleto() {
     const MAX_TENTATIVAS = 3;
-    const TIMEOUT_MS = 15000; // 15 segundos
+    const TIMEOUT_MS = 30000; // 30 segundos (aumentado de 15)
     
     for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
         try {
@@ -687,35 +687,48 @@ async function buscarDashboardCompleto() {
 
             // Criar um controller com timeout
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+            let timeoutId;
+            
+            try {
+                timeoutId = setTimeout(() => {
+                    console.warn(`⏱️ Timeout de ${TIMEOUT_MS}ms acionado`);
+                    controller.abort();
+                }, TIMEOUT_MS);
 
-            const response = await fetch(`${CONFIG.API_BASE}/api/dashboard`, {
-                signal: controller.signal
-            });
+                const response = await fetch(`${CONFIG.API_BASE}/api/dashboard`, {
+                    signal: controller.signal,
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
 
-            clearTimeout(timeoutId);
+                clearTimeout(timeoutId);
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-
-            if (data.success) {
-                dashboardData = data;
-                // Salvar no cache
-                dashboardCache = data;
-                dashboardCacheTimestamp = Date.now();
-                
-                console.log(`   ✅ Dashboard recebido com ${data.insercoesRecentes?.length || 0} inserções`);
-                if (data.debug) {
-                    console.log(`   Debug:`, data.debug);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-                renderizarDashboard(data);
-                return true;
-            } else {
-                console.error('❌ Erro nos dados:', data.error);
-                throw new Error(data.error || 'Erro desconhecido');
+
+                const data = await response.json();
+
+                if (data.success) {
+                    dashboardData = data;
+                    // Salvar no cache
+                    dashboardCache = data;
+                    dashboardCacheTimestamp = Date.now();
+                    
+                    console.log(`   ✅ Dashboard recebido com ${data.insercoesRecentes?.length || 0} inserções`);
+                    if (data.debug) {
+                        console.log(`   Debug:`, data.debug);
+                    }
+                    renderizarDashboard(data);
+                    return true;
+                } else {
+                    console.error('❌ Erro nos dados:', data.error);
+                    throw new Error(data.error || 'Erro desconhecido');
+                }
+            } finally {
+                if (timeoutId) clearTimeout(timeoutId);
             }
 
         } catch (error) {
