@@ -128,8 +128,8 @@ let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
 let pausarInsercoesAnimacao = false; // Flag para pausar Modo 1 quando entra Modo 2
 
 const MODO_TEMPOS = {
-    1: 10 * 1000,       // 10 segundos para Modo 1 (TESTE)
-    2: 20 * 1000        // 20 segundos para Modo 2
+    1: 20 * 1000,       // 20 segundos para Modo 1 (Rosa)
+    2: 20 * 1000        // 20 segundos para Modo 2 (Azul)
 };
 
 const iniciarAlternanciaModoPings = () => {
@@ -160,7 +160,7 @@ const iniciarAlternanciaModoPings = () => {
     
     // Iniciar primeira alternância (começa em Modo 1)
     timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
-    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (20seg) → Repetir`);
+    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 Rosa (20seg) ↔ Modo 2 Azul (20seg) - Total: 40seg`);
 };
 
 /**
@@ -570,6 +570,8 @@ async function buscarDashboardCompleto() {
 
         } catch (error) {
             console.warn(`⚠️ Tentativa ${tentativa} falhou:`, error.message);
+            console.warn(`   Tipo de erro:`, error.name);
+            console.warn(`   URL tentada: ${CONFIG.API_BASE}/api/dashboard`);
             
             // Se foi a última tentativa, usar cache
             if (tentativa === MAX_TENTATIVAS) {
@@ -580,6 +582,7 @@ async function buscarDashboardCompleto() {
                     return true;
                 } else {
                     console.error('❌ Erro ao buscar dashboard e sem cache disponível');
+                    console.error('   Motivo:', error.message);
                     mostrarErro('Erro de conexão - tentando reconectar...');
                     return false;
                 }
