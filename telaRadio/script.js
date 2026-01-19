@@ -163,7 +163,6 @@ const iniciarAlternanciaModoPings = () => {
     // Iniciar primeira alternância (começa em Modo 1)
     timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
     console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (20seg) → Repetir`);
-    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (20seg) → Repetir`);
 };
 
 /**

@@ -162,7 +162,6 @@ const iniciarAlternanciaModoPings = () => {
     timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
     console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (20seg) → Repetir`);
 };
-};
 
 /**
  * 🎯 MODO 2: Processa TODAS as inserções do dia e agrupa por cidade
