@@ -516,7 +516,7 @@ let dashboardCacheTimestamp = null;
 
 async function buscarDashboardCompleto() {
     const MAX_TENTATIVAS = 3;
-    const TIMEOUT_MS = 30000; // 30 segundos (aumentado de 15)
+    const TIMEOUT_MS = 60000; // 60 segundos (aumentado de 30)
     
     for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
         try {
@@ -528,7 +528,7 @@ async function buscarDashboardCompleto() {
             
             try {
                 timeoutId = setTimeout(() => {
-                    console.warn(`⏱️ Timeout de ${TIMEOUT_MS}ms acionado`);
+                    console.warn(`⏱️ Timeout de ${TIMEOUT_MS}ms (${TIMEOUT_MS/1000}seg) acionado - servidor demorando`);
                     controller.abort();
                 }, TIMEOUT_MS);
 
