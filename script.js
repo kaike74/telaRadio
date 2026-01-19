@@ -127,7 +127,7 @@ let timerAlternancia = null;
 let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
 
 const MODO_TEMPOS = {
-    1: 15 * 60 * 1000,  // 15 minutos para Modo 1
+    1: 10 * 1000,       // 10 segundos para Modo 1 (TESTE)
     2: 20 * 1000        // 20 segundos para Modo 2
 };
 
