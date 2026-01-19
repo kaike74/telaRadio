@@ -516,7 +516,7 @@ let dashboardCacheTimestamp = null;
 
 async function buscarDashboardCompleto() {
     const MAX_TENTATIVAS = 3;
-    const TIMEOUT_MS = 60000; // 60 segundos (aumentado de 30)
+    const TIMEOUT_MS = 45000; // 45 segundos (sincronizado com worker)
     
     for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
         try {

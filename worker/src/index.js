@@ -124,7 +124,11 @@ async function handleDashboard(env, corsHeaders) {
         let todasCampanhas, campanhasAtivas, emissorasProgramadas;
         let cacheStatus = "FRESH";
 
-    // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache)
+        // ⏱️ TIMEOUT TOTAL: 45 segundos (fallback depois disso)
+        const startTime = Date.now();
+        const TIMEOUT_TOTAL = 45000;
+
+    // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache) - RÁPIDO
     if (env.DASHBOARD_KV) {
         try {
             const cacheDadosEstaticos = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
@@ -138,40 +142,18 @@ async function handleDashboard(env, corsHeaders) {
                 cacheStatus = "FROM_24H_CACHE";
                 console.log(`✅ Dados estáticos carregados do CACHE DE 24H`);
             } else {
-                // ❌ Cache expirado ou não existe - buscar dados frescos
-                console.log(`⏳ Cache de 24h expirado ou não existe - BUSCANDO DADOS FRESCOS...`);
-                todasCampanhas = await buscarTodasCampanhas();
-                campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-                emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
-                
-                // Salvar no cache
-                await env.DASHBOARD_KV.put(
-                    `dados-estaticos-${dataHoje}`,
-                    JSON.stringify({
-                        todasCampanhas,
-                        campanhasAtivas,
-                        emissorasProgramadas,
-                        salvoEm: new Date().toISOString()
-                    }),
-                    { expirationTtl: 86400 } // 24 horas
-                );
-                console.log(`💾 Dados estáticos SALVOS no cache de 24h`);
-                cacheStatus = "FRESH_FETCH";
+                // ❌ Cache expirado - PULAR (vai usar fallback vazio)
+                console.log(`⏳ Cache de 24h expirado - retornando dados vazio`);
+                cacheStatus = "CACHE_MISS";
+                return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
             }
         } catch (cacheError) {
-            console.warn(`⚠️ Erro ao acessar cache: ${cacheError.message} - usando dados frescos`);
-            todasCampanhas = await buscarTodasCampanhas();
-            campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-            emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
-            cacheStatus = "ERROR_FALLBACK";
+            console.warn(`⚠️ Erro ao acessar cache: ${cacheError.message}`);
+            return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
         }
     } else {
-        // KV não configurado - usar dados frescos
-        console.log(`⚠️ KV não configurado - usando dados frescos sem cache`);
-        todasCampanhas = await buscarTodasCampanhas();
-        campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-        emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, null);
-        cacheStatus = "NO_KV";
+        // KV não configurado - retornar vazio
+        return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
     }
 
     if (campanhasAtivas.length === 0) {
@@ -181,32 +163,45 @@ async function handleDashboard(env, corsHeaders) {
     console.log(`🎯 ${campanhasAtivas.length} campanhas ativas`);
     console.log(`📻 ${emissorasProgramadas.length} emissoras programadas`);
 
-    // 2️⃣ BUSCAR INSERÇÕES (SEMPRE FRESCO - 5 em 5 segundos)
-    const { insercoesRecentes, todasInsercoes } = await buscarInsercoes(
-        campanhasAtivas,
-        dataHoje,
-        horaNum,
-        minutoNum
-    );
+    // Verificar timeout
+    if (Date.now() - startTime > TIMEOUT_TOTAL) {
+        console.warn(`⏱️ TIMEOUT: Excedido tempo total, retornando dados em cache`);
+        return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
+    }
+
+    // 2️⃣ BUSCAR INSERÇÕES (SEMPRE FRESCO - com timeout)
+    let insercoesRecentes = [];
+    let todasInsercoes = [];
+    
+    try {
+        const resultado = await buscarInsercoes(
+            campanhasAtivas,
+            dataHoje,
+            horaNum,
+            minutoNum
+        );
+        insercoesRecentes = resultado.insercoesRecentes || [];
+        todasInsercoes = resultado.todasInsercoes || [];
+    } catch (error) {
+        console.warn(`⚠️ Erro ao buscar inserções: ${error.message}`);
+        // Continuar mesmo sem inserções
+    }
 
     console.log(`📻 ${insercoesRecentes.length} inserções recentes até ${horaAtual}:${minutoAtual}`);
 
-    // Mostrar as 5 mais recentes para debug
-    if (insercoesRecentes.length > 0) {
-        console.log(`🕐 5 INSERÇÕES MAIS RECENTES:`);
-        insercoesRecentes.slice(0, 5).forEach((ins, i) => {
-            console.log(`   ${i+1}. ${ins.hour} - ${ins.stationName} - ${ins.city}`);
-        });
+    // 3️⃣ PROCESSAR COORDENADAS (com timeout)
+    let coordenadas = [];
+    try {
+        coordenadas = await processarCoordenadas(
+            insercoesRecentes,
+            env.DASHBOARD_KV,
+            dataHoje
+        );
+    } catch (error) {
+        console.warn(`⚠️ Erro ao processar coordenadas: ${error.message}`);
     }
 
-    // 3️⃣ PROCESSAR COORDENADAS (SEMPRE FRESCO - depende das inserções)
-    const coordenadas = await processarCoordenadas(
-        insercoesRecentes,
-        env.DASHBOARD_KV,
-        dataHoje
-    );
-
-    // 4️⃣ CALCULAR MÉTRICAS (usa cache de 24h para Top Emissoras/Cidades)
+    // 4️⃣ CALCULAR MÉTRICAS
     const metricas = calcularMetricas(
         insercoesRecentes,
         campanhasAtivas,
