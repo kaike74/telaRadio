@@ -1310,7 +1310,7 @@ function criarPinga(animacao, container, bounds) {
             }
         }
         // ========================================
-        // MODO 2: Aggregate (apenas cidade, sem horário/emissora)
+        // MODO 2: Aggregate (apenas ping sem rótulo)
         // ========================================
         else if (modoAtualPings === 2) {
             const cidade = animacao.dados.cidade;
@@ -1320,33 +1320,21 @@ function criarPinga(animacao, container, bounds) {
             const pingaExistente = document.getElementById(pingaDaCidadeId);
             
             if (pingaExistente) {
-                // Incrementar contador
-                const labelCidade = pingaExistente.querySelector('.label-cidade-contador');
-                if (labelCidade) {
-                    const contadorSpan = labelCidade.querySelector('.contador');
-                    const count = parseInt(contadorSpan.textContent) + 1;
-                    contadorSpan.textContent = count;
-                    contadorSpan.style.display = count > 1 ? 'inline' : 'none';
-                }
+                // Incrementar contador (armazenado como atributo, não exibido)
+                const count = parseInt(pingaExistente.dataset.count || 1) + 1;
+                pingaExistente.dataset.count = count;
                 
                 // Limpar timeout anterior se existir
                 if (pingtimeoutModo2.has(cidade)) {
                     clearTimeout(pingtimeoutModo2.get(cidade));
                 }
             } else {
-                // Criar novo pinga agregado
+                // Criar novo pinga agregado (sem rótulo)
                 pinga.id = pingaDaCidadeId;
+                pinga.dataset.count = 1;
                 pinga.innerHTML = `
                 <div class="pinga-circle"></div>
                 <div class="pinga-ripple"></div>
-                <div class="label-permanente">
-                    <div class="label-content">
-                        <div class="label-cidade-contador">
-                            ${cidade}
-                            <span class="contador" style="display: none; margin-left: 4px; font-size: 0.9em;">2</span>
-                        </div>
-                    </div>
-                </div>
             `;
                 
                 container.appendChild(pinga);
