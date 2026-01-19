@@ -155,7 +155,7 @@ const iniciarAlternanciaModoPings = () => {
     
     // Iniciar primeira alternância (começa em Modo 1 por 15 min)
     timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
-    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (10min) → Repetir`);
+    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (20seg) → Repetir`);
 };
 
 /**
@@ -181,23 +181,28 @@ const processarTodasInsercoesModo2 = async (data) => {
         insercoesPorCidade[cidade].push(insercao);
     });
 
+    console.log(`📊 Total de cidades únicas em Modo 2: ${Object.keys(insercoesPorCidade).length}`);
+
     // Para cada cidade, buscar coordenadas e criar pinga agregado UMA VEZ
     for (const [cidade, insercoes] of Object.entries(insercoesPorCidade)) {
         try {
+            console.log(`🔵 Modo 2: Processando cidade ${cidade}...`);
+            
             // Buscar coordenadas da cidade
             const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(cidade)}`);
             if (!coordResp.ok) {
-                console.warn(`⚠️ Não conseguiu coordenadas para ${cidade}`);
+                console.warn(`⚠️ Não conseguiu coordenadas para ${cidade} (status: ${coordResp.status})`);
                 continue;
             }
 
             const coordData = await coordResp.json();
             if (!coordData.sucesso || !coordData.coordenada) {
-                console.warn(`⚠️ Coordenadas inválidas para ${cidade}`);
+                console.warn(`⚠️ Coordenadas inválidas para ${cidade}:`, coordData);
                 continue;
             }
 
             const coordenada = coordData.coordenada;
+            console.log(`✅ Coordenadas encontradas: ${cidade} (lat: ${coordenada.lat}, lng: ${coordenada.lng})`);
 
             // Criar UMA animação agregada para essa cidade
             const animacao = {
@@ -228,7 +233,7 @@ const processarTodasInsercoesModo2 = async (data) => {
             // Criar o pinga (função detectará modoAtualPings === 2)
             criarPinga(animacao, container, bounds);
             
-            console.log(`✅ Pinga agregado criado: ${cidade} (${insercoes.length} inserções)`);
+            console.log(`✅ Pinga AZUL criado: ${cidade} (${insercoes.length} inserções)`);
 
         } catch (error) {
             console.error(`❌ Erro processando ${cidade}:`, error);
@@ -238,7 +243,7 @@ const processarTodasInsercoesModo2 = async (data) => {
         await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    console.log(`✅ Modo 2: Todos os pings agregados criados`);
+    console.log(`✅ Modo 2: Todos os pings agregados (AZUIS) criados`);
 };
 
 /**
