@@ -102,18 +102,8 @@ export default {
                     headers: { "Content-Type": "application/json" }
                 });
             } else if (url.pathname === "/api/debug/run-scheduled") {
-                // 🔧 ADMIN: Rodar Scheduled Worker manualmente
-                // Importar e executar o scheduled worker
-                const { default: scheduledWorker } = await import('./scheduled.js');
-                await scheduledWorker.scheduled({}, env, {});
-                
-                response = new Response(JSON.stringify({
-                    status: "ok",
-                    message: "Scheduled worker executado",
-                    timestamp: new Date().toISOString()
-                }), {
-                    headers: { "Content-Type": "application/json" }
-                });
+                // 🔧 ADMIN: Rodar lógica de Scheduled Worker manualmente
+                response = await handleRunScheduled(env, corsHeaders);
             } else if (url.pathname === "/api/dashboard") {
                 response = await handleDashboard(env, corsHeaders);
             } else if (url.pathname === "/api/insercoes/recentes") {
@@ -147,6 +137,97 @@ export default {
         }
     }
 };
+
+// ===== ENDPOINT: Rodar Scheduled Worker Manualmente =====
+async function handleRunScheduled(env, corsHeaders) {
+    try {
+        console.log(`\n${'='.repeat(120)}`);
+        console.log(`⏰ MANUAL SCHEDULED WORKER EXECUTION`);
+        console.log(`   Timestamp: ${new Date().toISOString()}`);
+        console.log(`${'='.repeat(120)}\n`);
+
+        // Pegar data e hora
+        const now = new Date();
+        const dataHoje = now.toISOString().split('T')[0];
+        const horaAtual = String(now.getHours()).padStart(2, '0');
+        const minutoAtual = String(now.getMinutes()).padStart(2, '0');
+
+        console.log(`📅 Data: ${dataHoje}`);
+        console.log(`🕐 Hora: ${horaAtual}:${minutoAtual}\n`);
+
+        // Buscar campanhas ativas
+        const todasCampanhas = await buscarTodasCampanhas();
+        const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
+        
+        console.log(`🎯 ${campanhasAtivas.length} campanhas ativas\n`);
+
+        if (campanhasAtivas.length === 0) {
+            return new Response(JSON.stringify({
+                status: "erro",
+                message: "Nenhuma campanha ativa",
+                timestamp: new Date().toISOString()
+            }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+
+        // Buscar inserções
+        const resultado = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
+        const insercoesRecentes = resultado.insercoesRecentes || [];
+        const todasInsercoes = resultado.todasInsercoes || [];
+
+        console.log(`✅ Inserções encontradas: ${insercoesRecentes.length} recentes, ${todasInsercoes.length} total\n`);
+
+        // Salvar no cache
+        if (env.DASHBOARD_KV) {
+            try {
+                await env.DASHBOARD_KV.put(
+                    `insercoes-cache-${dataHoje}`,
+                    JSON.stringify({
+                        todasInsercoes,
+                        insercoesRecentes,
+                        timestamp: Date.now(),
+                        dataHoje,
+                        horaAtual,
+                        minutoAtual
+                    }),
+                    { expirationTtl: 600 } // 10 minutos
+                );
+                console.log(`💾 ✅ Inserções salvas no cache com validade de 10 minutos\n`);
+            } catch (error) {
+                console.log(`⚠️ Erro ao salvar cache: ${error.message}\n`);
+            }
+        }
+
+        return new Response(JSON.stringify({
+            status: "ok",
+            message: "Scheduled worker executado com sucesso",
+            dados: {
+                campanhasAtivas: campanhasAtivas.length,
+                insercoesRecentes: insercoesRecentes.length,
+                todasInsercoes: todasInsercoes.length
+            },
+            timestamp: new Date().toISOString()
+        }), {
+            headers: { "Content-Type": "application/json" }
+        });
+
+    } catch (error) {
+        console.error(`❌ ERRO em handleRunScheduled: ${error.message}`);
+        console.error(`Stack: ${error.stack}\n`);
+
+        return new Response(JSON.stringify({
+            status: "erro",
+            message: error.message,
+            stack: error.stack.substring(0, 500),
+            timestamp: new Date().toISOString()
+        }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" }
+        });
+    }
+}
 
 // ===== ENDPOINT: Dashboard Completo =====
 async function handleDashboard(env, corsHeaders) {
