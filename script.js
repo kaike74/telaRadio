@@ -121,14 +121,14 @@ const CONFIG = {
 // SISTEMA DE 2 MODOS DE EXIBIÇÃO DE PINGS
 // ========================================
 // Modo 1: Ephemeral (15 minutos) - Pings desaparecem após 30s
-// Modo 2: Aggregate (10 minutos) - Pings fixos, agrupados por cidade
+// Modo 2: Aggregate (20 segundos) - Pings fixos, agrupados por cidade
 let modoAtualPings = 1; // Começa em Modo 1
 let timerAlternancia = null;
 let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
 
 const MODO_TEMPOS = {
     1: 15 * 60 * 1000,  // 15 minutos para Modo 1
-    2: 10 * 60 * 1000   // 10 minutos para Modo 2
+    2: 20 * 1000        // 20 segundos para Modo 2
 };
 
 const iniciarAlternanciaModoPings = () => {
@@ -1412,7 +1412,7 @@ function criarPinga(animacao, container, bounds) {
                 animacoesAtivas.set(pingaDaCidadeId, pinga);
             }
             
-            // Remover pinga após 10 minutos (duração do Modo 2)
+            // Remover pinga após 20 segundos (duração do Modo 2)
             const timeoutId = setTimeout(() => {
                 const pingElement = document.getElementById(`pinga-agregado-${cidade}`);
                 if (pingElement) {
