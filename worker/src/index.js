@@ -153,34 +153,65 @@ async function handleDashboard(env, corsHeaders) {
 
         console.log(`⏰ HORÁRIO BRASÍLIA: ${dataHoje} ${horaAtual}:${minutoAtual}`);
 
-        // 🔄 SISTEMA DE CACHE INTELIGENTE
-        // SEMPRE buscar: Inserções (5 em 5 segundos)
-        // Cache por 24h: Campanhas, Emissoras Programadas, Top Emissoras, Top Cidades
+        // 🔄 SISTEMA DE CACHE INTELIGENTE - SUPER SIMPLIFICADO
+        // 1️⃣ Se tem cache: retorna RÁPIDO com dados vazio
+        // 2️⃣ Se não tem cache: tenta buscar (pode demorar)
         
         let todasCampanhas, campanhasAtivas, emissorasProgramadas;
         let cacheStatus = "FRESH";
 
-        // ⏱️ TIMEOUT TOTAL: 45 segundos (fallback depois disso)
+        // ⏱️ TIMEOUT TOTAL: 20 segundos (fallback rápido)
         const startTime = Date.now();
-        const TIMEOUT_TOTAL = 45000;
+        const TIMEOUT_TOTAL = 20000;
 
-    // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache) - RÁPIDO
+    // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache) - SUPER RÁPIDO
     if (env.DASHBOARD_KV) {
         try {
             const cacheDadosEstaticos = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
             
             if (cacheDadosEstaticos) {
-                // ✅ Cache válido - usar dados em memória
+                // ✅ Cache válido - RETORNAR RAPIDINHO SEM BUSCAR MAIS NADA
                 const parsed = JSON.parse(cacheDadosEstaticos);
-                todasCampanhas = parsed.todasCampanhas;
-                campanhasAtivas = parsed.campanhasAtivas;
-                emissorasProgramadas = parsed.emissorasProgramadas;
                 cacheStatus = "FROM_24H_CACHE";
-                console.log(`✅ Dados estáticos carregados do CACHE DE 24H`);
+                console.log(`✅ Cache encontrado - retornando dados rápido`);
+                
+                // Retornar resultado vazio rapidinho (sem buscar inserções que demora)
+                const resultado = {
+                    success: true,
+                    timestamp: new Date().toISOString(),
+                    fromCache: true,
+                    cacheStatus: "FROM_24H_CACHE_RÁPIDO",
+                    metricas: {
+                        insercoesHoje: 0,
+                        campanhasAtivas: parsed.campanhasAtivas?.length || 0,
+                        emissorasUnicas: parsed.emissorasProgramadas?.length || 0,
+                        topCidades: [],
+                        topEmissoras: []
+                    },
+                    coordenadas: [],
+                    insercoesRecentes: [],
+                    debug: {
+                        totalCampanhas: parsed.todasCampanhas?.length || 0,
+                        campanhasAtivas: parsed.campanhasAtivas?.length || 0,
+                        emissorasProgramadas: parsed.emissorasProgramadas?.length || 0,
+                        totalInsercoes: 0,
+                        insercoesRecentes: 0,
+                        horaProcessamento: `${horaAtual}:${minutoAtual}`,
+                        cacheStrategy: "CACHE_RÁPIDO - SEM BUSCAR INSERÇÕES"
+                    }
+                };
+
+                return new Response(JSON.stringify(resultado, null, 2), {
+                    headers: {
+                        ...corsHeaders,
+                        "Content-Type": "application/json",
+                        "X-Cache-Status": "FROM_CACHE",
+                        "Cache-Control": "no-cache, no-store, must-revalidate"
+                    }
+                });
             } else {
-                // ❌ Cache expirado - PULAR (vai usar fallback vazio)
-                console.log(`⏳ Cache de 24h expirado - retornando dados vazio`);
-                cacheStatus = "CACHE_MISS";
+                // ❌ Cache expirado - retornar vazio
+                console.log(`⏳ Cache de 24h expirado`);
                 return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
             }
         } catch (cacheError) {
@@ -192,6 +223,7 @@ async function handleDashboard(env, corsHeaders) {
         return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
     }
 
+    // Esse código abaixo NÃO É EXECUTADO se tiver cache
     if (campanhasAtivas.length === 0) {
         return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
     }
