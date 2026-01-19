@@ -307,9 +307,19 @@ async function handleDashboard(env, corsHeaders) {
         console.warn(`⚠️ Erro ao carregar inserções do cache: ${error.message}`);
     }
 
-    // 3️⃣ PROCESSAR COORDENADAS (desabilitado - sem inserções)
+    // 3️⃣ PROCESSAR COORDENADAS (somente se tiver inserções)
     let coordenadas = [];
-    console.log(`⏭️ Coordenadas desabilitadas (Audiency removida, sem inserções)`);
+    if (insercoesRecentes.length > 0) {
+        try {
+            coordenadas = await processarCoordenadas(
+                insercoesRecentes,
+                env.DASHBOARD_KV,
+                dataHoje
+            );
+        } catch (error) {
+            console.warn(`⚠️ Erro ao processar coordenadas: ${error.message}`);
+        }
+    }
 
     // 4️⃣ CALCULAR MÉTRICAS
     const metricas = calcularMetricas(
@@ -758,17 +768,269 @@ function extrairCidadeDoNomeEmissora(nomeCompleto) {
 
 async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     /**
-     * ⚠️ AUDIENCY DESABILITADO - Retornando dados vazios
+     * 🕐 DELAY DE 1 HORA - FILTRO IMPLEMENTADO
      * 
-     * A API Audiency foi removida. Este endpoint agora retorna arrays vazios.
+     * Por que? Dados da API Audiency chegam com ~1 hora de delay.
+     * Exemplo:
+     *   - Inserção rodou em: 17:18
+     *   - Sistema recebeu em: 18:18
+     *   - Mostramos para usuário como: 16:18 (criando ilusão de "ao vivo")
+     * 
+     * Como funciona?
+     *   - Hora atual: 18:00
+     *   - Filtro de delay aplicado: mostra dados até 16:00
+     *   - Resultado: Usuário vê dados recentes graças ao filtro
+     * 
+     * Usado em:
+     *   ✅ Últimas Inserções (lista exibida no dashboard)
+     *   ✅ Inserções Hoje (métrica de contador)
+     *   ✅ Animações/Pins (criados para essas inserções filtradas)
+     *   ✅ Top Emissoras (baseado em inserções filtradas)
+     *   ✅ Top Cidades (baseado em inserções filtradas)
      */
-    console.log(`⏭️ buscarInsercoes() DESABILITADO - Audiency removida`);
+    console.log(`🔍 Buscando TODAS as inserções executadas no dia de ${dataHoje}...`);
 
     const todasInsercoes = [];
     const insercoesRecentes = [];
+    const logInsercoesDetalhado = []; // 📋 LOG DETALHADO
 
-    console.log(`✅ Retornando arrays vazios (Audiency desabilitada)`);
+    const horaAtualNum = parseInt(horaAtual);
+    const minutoAtualNum = parseInt(minutoAtual);
+
+    // ⭐ SEM FILTRO DE DELAY - Mostrar TODAS as inserções do dia
+    // A API Audiency já retorna dados com ~1 hora de atraso
+    // Não precisamos filtrar mais - só prejudica a exibição
+    // Mostrar tudo e deixar o frontend/usuário decidir
     
+    console.log(`⏰ Hora atual: ${horaAtualNum}:${minutoAtualNum}`);
+    console.log(`📊 Estratégia: MOSTRAR TODAS as inserções do dia (sem filtro de delay)`);
+
+    // Processar em batches (3 por vez para evitar timeout)
+    const batches = [];
+    const batchSize = 3;
+
+    for (let i = 0; i < campanhas.length; i += batchSize) {
+        batches.push(campanhas.slice(i, i + batchSize));
+    }
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+
+        for (const campanha of batch) {
+            try {
+                const url = `https://api.audiency.io/advertiser-rest/reports/common/advertiser-execution?page=1&limit=500&countryId=1&campaignId=${campanha.id}&stationDate=${dataHoje}&stationDate=${dataHoje}`;
+
+                const response = await fetch(url, {
+                    headers: { "accept": "application/json", "apiKey": API_KEY }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const items = data?.data?.lines || [];
+
+                    let recentesCount = 0;
+                    
+                    // 🔍 DEBUG: Registrar a ESTRUTURA exata do primeiro item
+                    if (items.length > 0) {
+                        console.log(`\n📦 ESTRUTURA DO PRIMEIRO ITEM DA CAMPANHA "${campanha.name}":`);
+                        const firstItem = items[0];
+                        console.log(`   Chaves disponíveis: ${Object.keys(firstItem).join(', ')}`);
+                        console.log(`   item.city = ${JSON.stringify(firstItem.city)}`);
+                        console.log(`   item.stationName = ${JSON.stringify(firstItem.stationName)}`);
+                        console.log(`   item.hour = ${JSON.stringify(firstItem.hour)}`);
+                        console.log(`   item.date = ${JSON.stringify(firstItem.date)}`);
+                        console.log(`   Campos relacionados a cidade/local: ${Object.keys(firstItem).filter(k => k.toLowerCase().includes('city') || k.toLowerCase().includes('local') || k.toLowerCase().includes('state') || k.toLowerCase().includes('uf')).join(', ')}`);
+                    }
+
+                    items.forEach((item, itemIndex) => {
+                        if (!item.hour) return;
+
+                        // Parse horário: "08:56" ou "08:56:19"
+                        const partesHora = item.hour.split(':');
+                        const horaItem = parseInt(partesHora[0]);
+                        const minutoItem = parseInt(partesHora[1]);
+                        const segundoItem = partesHora.length > 2 ? parseInt(partesHora[2]) : 0;
+                        
+                        const cidade = item.city ? item.city.split(' / ')[0] : '';
+                        const uf = item.city ? item.city.split(' / ')[1] : '';
+                        
+                        // 🔍 DEBUG: Mostrar itens que não têm cidade
+                        if (!cidade && itemIndex < 3) {
+                            console.log(`   ⚠️ Item ${itemIndex} SEM CIDADE: stationName="${item.stationName}", city="${item.city}"`);
+                        }
+
+                        const insercao = {
+                            stationName: item.stationName || '',
+                            client: item.client || campanha.client?.name || '',
+                            hour: item.hour || '',
+                            city: cidade,
+                            uf: uf,
+                            date: item.date || '',
+                            campaign: campanha.name || '',
+                            campaignId: campanha.id,
+                            timestamp: `${item.date} ${String(horaItem).padStart(2, '0')}:${String(minutoItem).padStart(2, '0')}:${String(segundoItem).padStart(2, '0')}`,
+                            horaNumerica: horaItem,
+                            minutoNumerico: minutoItem,
+                            segundoNumerico: segundoItem
+                        };
+
+                        // ✅ Adicionar TODAS as inserções do dia
+                        todasInsercoes.push(insercao);
+
+                        // 🚫 FILTRO DE CITY: Ignorar inserções sem localização
+                        // Só mostramos inserções que têm cidade preenchida
+                        if (!cidade || cidade.trim() === '') {
+                            return; // Pular inserções sem cidade
+                        }
+
+                        // ⭐ SEM FILTRO DE DELAY - Adicionar TODAS as inserções com cidade
+                        insercoesRecentes.push(insercao);
+                        recentesCount++;
+
+                        // 📋 REGISTRAR TUDO NO LOG DETALHADO
+                        logInsercoesDetalhado.push({
+                            horaReal: insercao.hour,
+                            emissora: insercao.stationName,
+                            proposta: insercao.campaign,
+                            horaExibicao: insercao.hour
+                        });
+                    });
+
+                    if (items.length > 0) {
+                        console.log(`   📊 ${campanha.name}: ${items.length} total, ${recentesCount} recentes`);
+                    } else {
+                        console.log(`   ⚠️ ${campanha.name}: NENHUM ITEM RETORNADO DA API`);
+                    }
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 200));
+
+            } catch (error) {
+                console.log(`❌ Erro campanha ${campanha.id}: ${error.message}`);
+            }
+        }
+
+        if (batchIndex < batches.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    }
+
+    // 📋 EXIBIR LOG DETALHADO DE TODAS AS INSERÇÕES
+    console.log(`\n${'='.repeat(120)}`);
+    console.log(`📋 LOG DETALHADO DE TODAS AS INSERÇÕES RECEBIDAS`);
+    console.log(`${'='.repeat(120)}`);
+    
+    if (logInsercoesDetalhado.length === 0) {
+        console.log(`⚠️ Nenhuma inserção recebida!`);
+    } else {
+        // Agrupar por status
+        const filtradas = logInsercoesDetalhado.filter(l => l.horaExibicao.includes('[FILTRADO]'));
+        const exibidas = logInsercoesDetalhado.filter(l => !l.horaExibicao.includes('[FILTRADO]'));
+
+        console.log(`\n✅ INSERÇÕES PARA EXIBIÇÃO (${exibidas.length}):`);
+        if (exibidas.length > 0) {
+            exibidas.forEach((log, idx) => {
+                console.log(`   ${(idx + 1).toString().padStart(3)} | ${log.horaReal.padEnd(8)} | ${log.emissora.padEnd(40)} | ${log.proposta.padEnd(30)}`);
+            });
+        }
+
+        if (filtradas.length > 0) {
+            console.log(`\n🚫 INSERÇÕES FILTRADAS (${filtradas.length}):`);
+            filtradas.forEach((log, idx) => {
+                console.log(`   ${(idx + 1).toString().padStart(3)} | ${log.horaReal.padEnd(8)} | ${log.emissora.padEnd(40)} | ${log.proposta.padEnd(30)}`);
+            });
+        }
+    }
+    
+    console.log(`${'='.repeat(120)}\n`);
+
+    // 📋 GUARDAR LOGS GLOBALMENTE PARA ACESSO VIA API
+    const filtradas = logInsercoesDetalhado.filter(l => l.horaExibicao.includes('[FILTRADO]'));
+    const exibidas = logInsercoesDetalhado.filter(l => !l.horaExibicao.includes('[FILTRADO]'));
+    
+    logsInsercoesGlobal = {
+        timestamp: new Date().toISOString(),
+        horaBrasilia: `${horaAtual}:${minutoAtual}`,
+        dataHoje: dataHoje,
+        total: logInsercoesDetalhado.length,
+        exibidas: exibidas,
+        filtradas: filtradas,
+        todos: logInsercoesDetalhado.slice(-500) // 🔒 LIMITAR A 500 ÚLTIMOS LOGS
+    };
+    
+    console.log(`✨ Logs salvos globalmente - ${exibidas.length} exibidas, ${filtradas.length} filtradas (${logInsercoesDetalhado.length} total)`);
+
+    // ⚠️ LOG CRÍTICO: Se não há dados nenhum
+    if (todasInsercoes.length === 0) {
+        console.error(`\n${'='.repeat(120)}`);
+        console.error(`❌ CRÍTICO: NENHUMA INSERÇÃO ENCONTRADA EM NENHUMA CAMPANHA`);
+        console.error(`${'='.repeat(120)}`);
+        console.error(`Análise:`);
+        console.error(`  - Campanhas processadas: ${campanhas.length}`);
+        console.error(`  - Total de insertions obtidas da API: 0`);
+        console.error(`  - Inserções com cidade: 0`);
+        console.error(`  - Inserções dentro do filtro de 1h: 0`);
+        console.error(`\nPossíveis causas:`);
+        console.error(`  1. API Audiency está retornando VAZIO`);
+        console.error(`  2. Nenhuma campanha tem inserções para hoje`);
+        console.error(`  3. Todas as inserções estão fora do horário (> 1h de atraso)`);
+        console.error(`${'='.repeat(120)}\n`);
+    } else if (insercoesRecentes.length === 0 && todasInsercoes.length > 0) {
+        console.warn(`\n${'='.repeat(120)}`);
+        console.warn(`⚠️ AVISO: Inserções encontradas mas NENHUMA dentro do filtro de 1 hora`);
+        console.warn(`${'='.repeat(120)}`);
+        console.warn(`Análise:`);
+        console.warn(`  - Total de inserções no dia: ${todasInsercoes.length}`);
+        console.warn(`  - Inserções com cidade: ${todasInsercoes.filter(i => i.city).length}`);
+        console.warn(`  - Inserções dentro do filtro: 0`);
+        console.warn(`\nTodas as ${todasInsercoes.length} inserções estão FILTRADAS (> 1 hora atrás)`);
+        console.warn(`Motivo: Filtro de 1 hora aplica-se a dados já atrasados pela API`);
+        console.warn(`${'='.repeat(120)}\n`);
+    }
+
+    // Ordenar por mais recente (usar TIMESTAMP completo, não apenas hora)
+    insercoesRecentes.sort((a, b) => {
+        const timeA = new Date(`${a.timestamp.replace(' ', 'T')}`);
+        const timeB = new Date(`${b.timestamp.replace(' ', 'T')}`);
+        return timeB - timeA;
+    });
+
+    todasInsercoes.sort((a, b) => {
+        const timeA = new Date(`${a.timestamp.replace(' ', 'T')}`);
+        const timeB = new Date(`${b.timestamp.replace(' ', 'T')}`);
+        return timeB - timeA;
+    });
+
+    // 🔍 DEBUG: Listar TODAS as cidades que temos nas inserções
+    const cidadesUnicasRecentes = [...new Set(insercoesRecentes
+        .filter(i => i.city)
+        .map(i => `${i.city}/${i.uf}`)
+    )].sort();
+    
+    console.log(`\n🌍 CIDADES NAS INSERÇÕES RECENTES (${cidadesUnicasRecentes.length} total):`);
+    if (cidadesUnicasRecentes.length > 0) {
+        console.log(`   ${cidadesUnicasRecentes.join(' | ')}`);
+        
+        // Verificar se Joinville está lá
+        if (cidadesUnicasRecentes.some(c => c.includes('Joinville'))) {
+            console.log(`   ✅ JOINVILLE ENCONTRADO!`);
+        } else {
+            console.log(`   ⚠️ JOINVILLE NÃO ESTÁ NAS INSERÇÕES RECENTES`);
+        }
+    } else {
+        console.log(`   ⚠️ Nenhuma cidade com dados!`);
+    }
+    
+    // 🔍 DEBUG: Estatísticas detalhadas sobre as inserções
+    console.log(`\n📊 ANÁLISE DETALHADA DAS INSERÇÕES:`);
+    console.log(`   Total de inserções executadas (histórico): ${todasInsercoes.length}`);
+    console.log(`   Inserções com CITY preenchido: ${todasInsercoes.filter(i => i.city).length}`);
+    console.log(`   Inserções SEM city preenchido: ${todasInsercoes.filter(i => !i.city).length}`);
+    console.log(`   Inserções recentes para exibição no mapa: ${insercoesRecentes.length}`);
+
+    console.log(`   Inserções com city (para exibir): ${insercoesRecentes.filter(i => i.city).length}`);
+    console.log(`   Cidades únicas encontradas: ${cidadesUnicasRecentes.length}`);
+
     return { insercoesRecentes, todasInsercoes };
 }
 
