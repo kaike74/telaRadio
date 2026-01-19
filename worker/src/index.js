@@ -243,47 +243,6 @@ async function handleDashboard(env, corsHeaders) {
 
     // 4️⃣ CALCULAR MÉTRICAS
     const metricas = calcularMetricas(
-
-    // Verificar timeout
-    if (Date.now() - startTime > TIMEOUT_TOTAL) {
-        console.warn(`⏱️ TIMEOUT: Excedido tempo total, retornando dados em cache`);
-        return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
-    }
-
-    // 2️⃣ BUSCAR INSERÇÕES (SEMPRE FRESCO - com timeout)
-    let insercoesRecentes = [];
-    let todasInsercoes = [];
-    
-    try {
-        const resultado = await buscarInsercoes(
-            campanhasAtivas,
-            dataHoje,
-            horaNum,
-            minutoNum
-        );
-        insercoesRecentes = resultado.insercoesRecentes || [];
-        todasInsercoes = resultado.todasInsercoes || [];
-    } catch (error) {
-        console.warn(`⚠️ Erro ao buscar inserções: ${error.message}`);
-        // Continuar mesmo sem inserções
-    }
-
-    console.log(`📻 ${insercoesRecentes.length} inserções recentes até ${horaAtual}:${minutoAtual}`);
-
-    // 3️⃣ PROCESSAR COORDENADAS (com timeout)
-    let coordenadas = [];
-    try {
-        coordenadas = await processarCoordenadas(
-            insercoesRecentes,
-            env.DASHBOARD_KV,
-            dataHoje
-        );
-    } catch (error) {
-        console.warn(`⚠️ Erro ao processar coordenadas: ${error.message}`);
-    }
-
-    // 4️⃣ CALCULAR MÉTRICAS
-    const metricas = calcularMetricas(
         insercoesRecentes,
         campanhasAtivas,
         emissorasProgramadas,
