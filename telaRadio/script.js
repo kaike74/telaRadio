@@ -713,8 +713,9 @@ let dashboardCache = null;
 let dashboardCacheTimestamp = null;
 
 async function buscarDashboardCompleto() {
-    const MAX_TENTATIVAS = 3;
-    const TIMEOUT_MS = 45000; // 45 segundos (sincronizado com worker)
+    const MAX_TENTATIVAS = 4;
+    const TIMEOUT_MS = 15000; // 15 segundos (Worker responde em 10s ou timeout)
+    const RETRY_DELAYS = [1000, 2000, 3000]; // 1s, 2s, 3s entre retries
     
     for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
         try {
@@ -787,7 +788,9 @@ async function buscarDashboardCompleto() {
             }
             
             // Aguardar antes de tentar novamente
-            await aguardar(2000 * tentativa); // 2s, 4s, etc.
+            const delayMs = RETRY_DELAYS[tentativa - 1] || 5000;
+            console.log(`   ⏳ Próxima tentativa em ${delayMs/1000}s...`);
+            await aguardar(delayMs);
         }
     }
     
