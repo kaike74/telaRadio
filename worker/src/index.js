@@ -101,6 +101,19 @@ export default {
                 }), {
                     headers: { "Content-Type": "application/json" }
                 });
+            } else if (url.pathname === "/api/debug/run-scheduled") {
+                // 🔧 ADMIN: Rodar Scheduled Worker manualmente
+                // Importar e executar o scheduled worker
+                const { default: scheduledWorker } = await import('./scheduled.js');
+                await scheduledWorker.scheduled({}, env, {});
+                
+                response = new Response(JSON.stringify({
+                    status: "ok",
+                    message: "Scheduled worker executado",
+                    timestamp: new Date().toISOString()
+                }), {
+                    headers: { "Content-Type": "application/json" }
+                });
             } else if (url.pathname === "/api/dashboard") {
                 response = await handleDashboard(env, corsHeaders);
             } else if (url.pathname === "/api/insercoes/recentes") {
