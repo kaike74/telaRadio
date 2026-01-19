@@ -28,16 +28,26 @@ const DURACAO_ANIMACAO_SEGUNDOS = 30; // Duração da animação no mapa (30 seg
 // 📋 ARMAZENAR LOGS DE INSERÇÕES
 let logsInsercoesGlobal = [];
 
+// CORS headers - aplicado globalmente
+const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+};
+
+// Middleware para adicionar CORS a TODAS as respostas
+function adicionarCORS(response) {
+    const novaResponse = new Response(response.body, response);
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+        novaResponse.headers.set(key, value);
+    });
+    return novaResponse;
+}
+
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
-
-        // CORS headers
-        const corsHeaders = {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        };
 
         // Handle CORS preflight
         if (request.method === "OPTIONS") {
@@ -45,41 +55,46 @@ export default {
         }
 
         try {
+            let response;
+            
             // Routing
             if (url.pathname === "/api/health") {
-                return new Response(JSON.stringify({
+                response = new Response(JSON.stringify({
                     status: "ok",
                     timestamp: new Date().toISOString()
                 }), {
-                    headers: { ...corsHeaders, "Content-Type": "application/json" }
+                    headers: { "Content-Type": "application/json" }
                 });
             } else if (url.pathname === "/api/dashboard") {
-                return await handleDashboard(env, corsHeaders);
+                response = await handleDashboard(env, corsHeaders);
             } else if (url.pathname === "/api/insercoes/recentes") {
-                return await handleInsercoesRecentes(env, corsHeaders);
+                response = await handleInsercoesRecentes(env, corsHeaders);
             } else if (url.pathname === "/api/coordenada") {
-                return await handleCoordenada(env, corsHeaders, url);
+                response = await handleCoordenada(env, corsHeaders, url);
             } else if (url.pathname === "/api/logs/insercoes") {
-                return await handleLogsInsercoes(env, corsHeaders);
+                response = await handleLogsInsercoes(env, corsHeaders);
             } else {
-                return new Response(JSON.stringify({
+                response = new Response(JSON.stringify({
                     error: "Endpoint não encontrado",
                     endpoints: ["/api/health", "/api/dashboard", "/api/insercoes/recentes", "/api/coordenada", "/api/logs/insercoes"]
                 }), {
                     status: 404,
-                    headers: { ...corsHeaders, "Content-Type": "application/json" }
+                    headers: { "Content-Type": "application/json" }
                 });
             }
+            
+            return adicionarCORS(response);
         } catch (error) {
             console.error("❌ ERRO:", error);
-            return new Response(JSON.stringify({
+            const response = new Response(JSON.stringify({
                 success: false,
                 error: error.message,
                 timestamp: new Date().toISOString()
             }), {
                 status: 500,
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
+                headers: { "Content-Type": "application/json" }
             });
+            return adicionarCORS(response);
         }
     }
 };
