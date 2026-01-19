@@ -127,6 +127,7 @@ const CONFIG = {
 let modoAtualPings = 1; // Começa em Modo 1
 let timerAlternancia = null;
 let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
+let pausarInsercoesAnimacao = false; // Flag para pausar Modo 1 quando entra Modo 2
 
 const MODO_TEMPOS = {
     1: 10 * 1000,       // 10 segundos para Modo 1 (TESTE)
@@ -140,11 +141,17 @@ const iniciarAlternanciaModoPings = () => {
         console.log(`🔄 ALTERNÂNCIA DE MODOS: Entrando em MODO ${modoAtualPings}`);
         
         if (modoAtualPings === 2) {
-            // Entrando em Modo 2: processar TODAS as inserções do dia por cidade
+            // Entrando em Modo 2: limpar pings de Modo 1 e pausar animações
+            pausarInsercoesAnimacao = true;
+            console.log(`🚫 Pausando animações de Modo 1`);
+            limparPinasEphemeral();
+            
+            // Processar TODAS as inserções do dia por cidade
             console.log(`📍 Modo 2: Agregando TODAS as inserções do dia por cidade`);
             processarTodasInsercoesModo2(dashboardData);
         } else {
-            // Entrando em Modo 1: limpar pings agregados
+            // Entrando em Modo 1: limpar pings agregados e retomar animações
+            pausarInsercoesAnimacao = false;
             console.log(`📡 Modo 1: Voltando ao modo ephemeral (pings desaparecem após 30s)`);
             limparPingsAgregados();
         }
@@ -153,8 +160,9 @@ const iniciarAlternanciaModoPings = () => {
         timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[modoAtualPings]);
     };
     
-    // Iniciar primeira alternância (começa em Modo 1 por 15 min)
+    // Iniciar primeira alternância (começa em Modo 1)
     timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
+    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (20seg) → Repetir`);
     console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (20seg) → Repetir`);
 };
 
@@ -267,6 +275,29 @@ const limparPingsAgregados = () => {
     pingtimeoutModo2.clear();
 
     console.log(`🧹 Pings agregados removidos`);
+};
+
+/**
+ * 🧹 Limpar todos os pings ephemeral (Modo 1) ao entrar em Modo 2
+ */
+const limparPinasEphemeral = () => {
+    const container = document.getElementById('animacoes-layer');
+    if (!container) return;
+
+    // Remover todos os pings que NÃO são agregados (não começam com "pinga-agregado-")
+    Array.from(container.querySelectorAll('[id^="pinga-"]')).forEach(pinga => {
+        if (!pinga.id.startsWith('pinga-agregado-')) {
+            pinga.classList.add('fade-out');
+            setTimeout(() => {
+                if (pinga.parentNode) {
+                    pinga.remove();
+                    animacoesAtivas.delete(pinga.id);
+                }
+            }, 300);
+        }
+    });
+
+    console.log(`🧹 Pings ephemeral removidos`);
 };
 
 // Estado global
@@ -1058,6 +1089,12 @@ function atualizarAnimacoes(novasAnimacoes) {
  */
 function criarPingaDoTicker(insercao, tickerId) {
     try {
+        // ⏸️ Pausar criação de pings em Modo 1 quando entra Modo 2
+        if (pausarInsercoesAnimacao) {
+            console.log(`⏸️ Criação de pinga pausada (Modo 2 ativo)`);
+            return;
+        }
+
         // Validar dados mínimos
         if (!insercao || !insercao.city) {
             LoggerOtimizado.log(`Inserção sem city rejeitada (ID: ${tickerId})`, 'pinga-rejeitado');
