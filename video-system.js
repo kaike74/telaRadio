@@ -1,11 +1,11 @@
 /**
  * 🎬 SISTEMA DE CICLO: DASHBOARD ↔ VÍDEOS
- * Com pré-carregamento para transições suaves
+ * Pré-carregamento durante Dashboard para sessão de vídeos perfeita
  * 
- * Ciclo:
- * - Dashboard (1 minuto - teste, depois 10min)
- * - Vídeos Aleatórios (3 minutos, ~7-9 vídeos de 20-25s)
- * - Repetir
+ * Estratégia:
+ * - Dashboard (60s): Pré-carrega TODOS os vídeos da próxima sessão
+ * - Vídeos (180s): Reproduz vídeos já carregados, zero travamentos
+ * - Repetir indefinidamente
  */
 
 const VIDEO_CONFIG = {
@@ -17,7 +17,8 @@ const VIDEO_CONFIG = {
     // Configurações
     ENABLED: true,
     AUTO_LOOP: true,
-    LOG_CHANGES: true
+    LOG_CHANGES: true,
+    PRELOAD_BUFFER: 2                       // Número de vídeos a pré-carregar
 };
 
 class VideoAutoPlaySystem {
@@ -31,9 +32,13 @@ class VideoAutoPlaySystem {
         this.videoCycleEndTime = null;
         this.cycleTimer = null;
         this.videoCheckInterval = null;
+        this.dashboardCheckInterval = null;  // Monitor durante dashboard
         this.primaryVideo = null;            // Elemento principal
         this.preloadVideo = null;            // Elemento pré-carregado
         this.usePrimary = true;              // Flag para saber qual tá tocando
+        this.videoCache = new Map();         // Cache de vídeos pré-carregados
+        this.nextCycleSongs = [];            // Vídeos selecionados para próxima sessão
+        this.preloadProgress = 0;            // Progresso de pré-carregamento
     }
 
     /**
@@ -58,6 +63,10 @@ class VideoAutoPlaySystem {
                 this.currentMode = 'dashboard';
                 this.cycleStartTime = Date.now();
                 console.log(`📊 [VIDEO-SYSTEM] Iniciando com DASHBOARD`);
+                console.log(`⏳ [VIDEO-SYSTEM] Iniciando pré-carregamento de vídeos para próxima sessão...`);
+                
+                // Iniciar pré-carregamento durante dashboard
+                this.startDashboardPreload();
                 
                 // Agendar transição para vídeos
                 this.scheduleNextTransition();
@@ -87,8 +96,90 @@ class VideoAutoPlaySystem {
     }
 
     /**
-     * Carregar vídeos da API
+     * Iniciar pré-carregamento durante Dashboard
      */
+    startDashboardPreload() {
+        if (this.dashboardCheckInterval) {
+            clearInterval(this.dashboardCheckInterval);
+        }
+
+        // Selecionar vídeos para próxima sessão AGORA
+        const numVideosNecessarios = Math.ceil(VIDEO_CONFIG.VIDEO_CYCLE_DURATION / VIDEO_CONFIG.SINGLE_VIDEO_DURATION);
+        this.nextCycleSongs = this.getRandomVideos(numVideosNecessarios);
+        console.log(`📋 Próxima sessão: ${this.nextCycleSongs.length} vídeos selecionados`);
+
+        // Começar a pré-carregar
+        this.preloadProgress = 0;
+        this.startPreloadingVideos(this.nextCycleSongs);
+
+        // Monitor de progresso
+        this.dashboardCheckInterval = setInterval(() => {
+            const porcentagem = Math.round((this.preloadProgress / this.nextCycleSongs.length) * 100);
+            if (porcentagem > 0 && porcentagem < 100) {
+                console.log(`⏳ Pré-carregamento: ${this.preloadProgress}/${this.nextCycleSongs.length} (${porcentagem}%)`);
+            }
+        }, 5000); // Log a cada 5 segundos
+    }
+
+    /**
+     * Pré-carregar todos os vídeos da lista
+     */
+    async startPreloadingVideos(videoList) {
+        console.log(`🎬 Iniciando pré-carregamento de ${videoList.length} vídeos...`);
+        
+        for (let i = 0; i < videoList.length; i++) {
+            const videoData = videoList[i];
+            
+            // Verificar se já está em cache
+            if (this.videoCache.has(videoData.id)) {
+                console.log(`✅ ${i + 1}/${videoList.length} - Em cache: ${videoData.nome}`);
+                this.preloadProgress++;
+                continue;
+            }
+            
+            // Pré-carregar
+            await this.cacheVideo(videoData, i, videoList.length);
+            this.preloadProgress++;
+        }
+        
+        console.log(`✅ PRÉ-CARREGAMENTO COMPLETO! ${this.videoCache.size} vídeos prontos`);
+    }
+
+    /**
+     * Fazer cache de um vídeo (fetch para garantir que está pronto)
+     */
+    cacheVideo(videoData, index, total) {
+        return new Promise((resolve) => {
+            try {
+                const videoUrl = videoData.urlVideo;
+                console.log(`📥 ${index + 1}/${total} Pré-carregando: ${videoData.nome}...`);
+                
+                // Fazer HEAD request para verificar se o vídeo é acessível
+                fetch(videoUrl, { method: 'HEAD' })
+                    .then(response => {
+                        if (response.ok) {
+                            this.videoCache.set(videoData.id, {
+                                ...videoData,
+                                cached: true,
+                                timestamp: Date.now()
+                            });
+                            console.log(`✅ ${index + 1}/${total} Pronto: ${videoData.nome}`);
+                        } else {
+                            console.warn(`⚠️  ${index + 1}/${total} Erro ao acessar: ${videoData.nome}`);
+                        }
+                        resolve();
+                    })
+                    .catch(error => {
+                        console.warn(`⚠️  ${index + 1}/${total} Erro: ${videoData.nome} - ${error.message}`);
+                        resolve(); // Continuar mesmo com erro
+                    });
+                
+            } catch (error) {
+                console.error(`❌ Erro ao cachear vídeo:`, error.message);
+                resolve();
+            }
+        });
+    }
     async loadVideos() {
         try {
             const apiUrl = 'https://dashboard-radio-worker.kaike-458.workers.dev/api/videos';
@@ -145,43 +236,36 @@ class VideoAutoPlaySystem {
      */
     async startVideosCycle() {
         console.log(`🎬 [VIDEO-SYSTEM] Iniciando ciclo de VÍDEOS (3 minutos)...`);
+        console.log(`✅ Usando ${this.nextCycleSongs.length} vídeos pré-carregados`);
         
-        if (this.videos.length === 0) {
+        // Para a monitoração do dashboard
+        if (this.dashboardCheckInterval) {
+            clearInterval(this.dashboardCheckInterval);
+        }
+        
+        // Usar os vídeos que foram pré-carregados
+        this.currentCycleSongs = this.nextCycleSongs;
+        
+        if (this.currentCycleSongs.length === 0) {
             console.warn(`⚠️  Nenhum vídeo disponível`);
             return;
         }
-
-        // Selecionar vídeos aleatórios para preencher 3 minutos
-        const numVideosNecessarios = Math.ceil(VIDEO_CONFIG.VIDEO_CYCLE_DURATION / VIDEO_CONFIG.SINGLE_VIDEO_DURATION);
-        console.log(`📊 Selecionando ${numVideosNecessarios} vídeos aleatórios...`);
-        
-        this.currentCycleSongs = this.getRandomVideos(numVideosNecessarios);
-        console.log(`✅ ${this.currentCycleSongs.length} vídeos selecionados para esta ciclo`);
         
         this.currentVideoIndex = 0;
         this.currentMode = 'videos';
         this.videoCycleEndTime = Date.now() + VIDEO_CONFIG.VIDEO_CYCLE_DURATION;
         this.usePrimary = true;
         
-        // Mostrar overlay (ainda vazio/preto)
+        // Mostrar overlay
         const overlay = document.getElementById('video-overlay');
         if (overlay) {
             overlay.classList.remove('hidden');
             overlay.classList.add('show');
         }
         
-        // PRÉ-CARREGAR primeiro vídeo ANTES de reproduzir
-        console.log(`⏳ [VIDEO-SYSTEM] Pré-carregando primeiro vídeo...`);
-        await this.preloadVideoElement(this.primaryVideo, document.getElementById('video-source'), this.currentCycleSongs[this.currentVideoIndex]);
-        
-        // Agora reproduzir o primeiro vídeo (já está pronto)
-        console.log(`▶️  [VIDEO-SYSTEM] Primeiro vídeo pronto, iniciando reprodução...`);
+        // Começar a tocar o primeiro vídeo (já está pré-carregado)
+        console.log(`▶️  [VIDEO-SYSTEM] Iniciando reprodução dos vídeos pré-carregados...`);
         this.playVideo(this.currentCycleSongs[this.currentVideoIndex]);
-        
-        // Pré-carregar segundo vídeo
-        if (this.currentCycleSongs.length > 1) {
-            this.preloadNextVideo(1);
-        }
         
         // Monitorar progresso do ciclo
         if (this.videoCheckInterval) {
@@ -232,67 +316,7 @@ class VideoAutoPlaySystem {
     }
 
     /**
-     * Pré-carregar um vídeo
-     */
-    preloadNextVideo(index) {
-        if (index >= this.currentCycleSongs.length) {
-            return;
-        }
-        
-        const videoData = this.currentCycleSongs[index];
-        const videoUrl = videoData.urlVideo;
-        const preloadSource = document.getElementById('video-preload-source');
-        
-        if (preloadSource) {
-            preloadSource.src = videoUrl;
-            this.preloadVideo.load();
-            console.log(`⏳ [VIDEO-SYSTEM] Pré-carregando: ${index + 1}/${this.currentCycleSongs.length} ${videoData.nome}`);
-        }
-    }
-
-    /**
-     * Pré-carregar e esperar vídeo ficar pronto
-     */
-    preloadVideoElement(videoElement, videoSource, videoData) {
-        return new Promise((resolve) => {
-            try {
-                const videoUrl = videoData.urlVideo;
-                console.log(`⏳ Carregando: ${videoData.nome}`);
-                
-                videoSource.src = videoUrl;
-                videoElement.load();
-                
-                // Esperar o vídeo estar pronto
-                const checkReady = () => {
-                    if (videoElement.readyState >= 2) { // HAVE_CURRENT_DATA
-                        console.log(`✅ Vídeo pronto: ${videoData.nome}`);
-                        videoElement.removeEventListener('canplay', checkReady);
-                        videoElement.removeEventListener('loadeddata', checkReady);
-                        resolve();
-                    }
-                };
-                
-                // Listeners para detectar quando está pronto
-                videoElement.addEventListener('canplay', checkReady, { once: true });
-                videoElement.addEventListener('loadeddata', checkReady, { once: true });
-                
-                // Timeout de segurança (30 segundos)
-                setTimeout(() => {
-                    console.warn(`⚠️  Timeout ao carregar vídeo, continuando mesmo assim`);
-                    videoElement.removeEventListener('canplay', checkReady);
-                    videoElement.removeEventListener('loadeddata', checkReady);
-                    resolve();
-                }, 30000);
-                
-            } catch (error) {
-                console.error(`❌ Erro ao pré-carregar:`, error.message);
-                resolve(); // Continuar mesmo com erro
-            }
-        });
-    }
-
-    /**
-     * Reproduzir um vídeo específico
+     * Reproduzir um vídeo específico (já pré-carregado)
      */
     playVideo(videoData) {
         // Determinar qual elemento usar (alterna entre primary e preload)
@@ -321,20 +345,16 @@ class VideoAutoPlaySystem {
             }, 300);
         }
         
-        // Se não for o primeiro vídeo (já foi pré-carregado)
-        if (this.currentVideoIndex > 0) {
-            // Carregar vídeo (será o preload que já foi carregado)
-            videoSource.src = videoUrl;
-            currentElement.load();
-        }
-        // Se for o primeiro, já foi pré-carregado em startVideosCycle
+        // Carregar vídeo (já pré-carregado, será rápido)
+        videoSource.src = videoUrl;
+        currentElement.load();
         
         // Mostrar o elemento
         currentElement.style.display = 'block';
         currentElement.classList.remove('fade-out');
         currentElement.classList.add('fade-in');
         
-        // Reproduzir
+        // Reproduzir imediatamente
         const playPromise = currentElement.play();
         if (playPromise !== undefined) {
             playPromise.catch(error => {
@@ -350,12 +370,22 @@ class VideoAutoPlaySystem {
             this.playNextVideoInCycle();
         };
         
-        // Pré-carregar próximo vídeo
+        // Pré-carregar próximo vídeo no buffer (para ser extra safe)
         const nextIndex = this.currentVideoIndex + 1;
         if (nextIndex < this.currentCycleSongs.length) {
             setTimeout(() => {
-                this.preloadNextVideo(nextIndex);
-            }, 1000); // Começar a pré-carregar 1 segundo depois
+                const nextVideo = this.currentCycleSongs[nextIndex];
+                const preloadElem = nextIndex === this.currentVideoIndex + 1 ? this.preloadVideo : this.primaryVideo;
+                const preloadSource = nextIndex === this.currentVideoIndex + 1 ? 
+                    document.getElementById('video-preload-source') : 
+                    document.getElementById('video-source');
+                
+                if (preloadSource) {
+                    preloadSource.src = nextVideo.urlVideo;
+                    preloadElem.load();
+                    console.log(`⏳ Buffer pré-carregado: ${nextIndex + 1}/${this.currentCycleSongs.length}`);
+                }
+            }, 500); // Começar a pré-carregar 500ms depois
         }
     }
 
