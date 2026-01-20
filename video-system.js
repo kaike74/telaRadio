@@ -39,6 +39,7 @@ class VideoAutoPlaySystem {
         this.videoCache = new Map();         // Cache de vídeos pré-carregados
         this.nextCycleSongs = [];            // Vídeos selecionados para próxima sessão
         this.preloadProgress = 0;            // Progresso de pré-carregamento
+        this.lastUsedVideos = [];            // Histórico dos últimos vídeos usados
     }
 
     /**
@@ -350,11 +351,39 @@ class VideoAutoPlaySystem {
     }
 
     /**
-     * Obter array de vídeos aleatórios
+     * Obter array de vídeos aleatórios (evitando repetição)
+     * Fisher-Yates shuffle com histórico de vídeos usados
      */
     getRandomVideos(count) {
-        const shuffled = [...this.videos].sort(() => Math.random() - 0.5);
-        return shuffled.slice(0, count);
+        // Filtrar vídeos que NÃO foram usados recentemente (últimos 20 vídeos)
+        const videosDisponiveis = this.videos.filter(v => !this.lastUsedVideos.includes(v.id));
+        
+        // Se não há vídeos novos, limpar histórico e usar todos
+        if (videosDisponiveis.length < count) {
+            console.log(`⚠️ [VIDEO-SYSTEM] Reciclando histórico - já usou ${this.lastUsedVideos.length} vídeos`);
+            this.lastUsedVideos = [];
+        }
+        
+        // Fisher-Yates shuffle (melhor que sort random)
+        const pool = videosDisponiveis.length > 0 ? [...videosDisponiveis] : [...this.videos];
+        for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        
+        const selecionados = pool.slice(0, count);
+        
+        // Guardar IDs dos vídeos usados no histórico
+        selecionados.forEach(v => {
+            this.lastUsedVideos.push(v.id);
+            // Limitar histórico a 20 últimos vídeos
+            if (this.lastUsedVideos.length > 20) {
+                this.lastUsedVideos.shift();
+            }
+        });
+        
+        console.log(`🎲 [VIDEO-SYSTEM] ${count} vídeos selecionados (${this.lastUsedVideos.length} no histórico)`);
+        return selecionados;
     }
 
     /**
