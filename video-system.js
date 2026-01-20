@@ -27,20 +27,28 @@ class VideoAutoPlaySystem {
      */
     async init() {
         console.log(`🎬 Inicializando sistema de auto-play de vídeos...`);
+        console.log(`🎬 [VIDEO-SYSTEM] Inicializando VideoAutoPlaySystem...`);
         
         try {
             // Carregar vídeos da API
-            await this.loadVideos();
+            console.log(`🎬 [VIDEO-SYSTEM] Etapa 1: Carregando vídeos...`);
+            const videosCarregados = await this.loadVideos();
             
-            if (this.videos.length > 0) {
-                console.log(`✅ ${this.videos.length} vídeos carregados`);
+            if (videosCarregados && this.videos.length > 0) {
+                console.log(`✅ [VIDEO-SYSTEM] Etapa 1 OK: ${this.videos.length} vídeos disponíveis`);
+                console.log(`🎬 [VIDEO-SYSTEM] Etapa 2: Iniciando ciclo...`);
                 this.startCycle();
+                
+                console.log(`🎬 [VIDEO-SYSTEM] Etapa 3: Iniciando countdown...`);
                 this.startCountdown();
+                
+                console.log(`✅ [VIDEO-SYSTEM] Inicialização completa!`);
             } else {
-                console.warn(`⚠️ Nenhum vídeo disponível`);
+                console.warn(`❌ [VIDEO-SYSTEM] Nenhum vídeo disponível`);
             }
         } catch (error) {
-            console.error(`❌ Erro ao inicializar sistema de vídeos: ${error.message}`);
+            console.error(`❌ [VIDEO-SYSTEM] Erro ao inicializar:`, error.message);
+            console.error(error.stack);
         }
     }
 
@@ -49,19 +57,27 @@ class VideoAutoPlaySystem {
      */
     async loadVideos() {
         try {
+            console.log(`🎬 [VIDEO-SYSTEM] Chamando /api/videos...`);
             const response = await fetch('/api/videos');
+            console.log(`🎬 [VIDEO-SYSTEM] Resposta recebida, status: ${response.status}`);
+            
             const data = await response.json();
+            console.log(`🎬 [VIDEO-SYSTEM] JSON parseado:`, data);
             
             if (data.sucesso && data.videos && data.videos.length > 0) {
                 this.videos = data.videos;
-                console.log(`📥 ${this.videos.length} vídeos carregados da API`);
+                console.log(`✅ [VIDEO-SYSTEM] ${this.videos.length} vídeos carregados:`);
+                this.videos.forEach((v, i) => {
+                    console.log(`   ${i+1}. ${v.nome}`);
+                });
                 return true;
             } else {
-                console.warn(`⚠️ API não retornou vídeos:`, data.erro || 'Nenhum vídeo');
+                console.warn(`❌ [VIDEO-SYSTEM] Resposta sem vídeos:`, data);
                 return false;
             }
         } catch (error) {
-            console.error(`❌ Erro ao carregar vídeos:`, error.message);
+            console.error(`❌ [VIDEO-SYSTEM] Erro ao carregar vídeos:`, error.message);
+            console.error(error.stack);
             return false;
         }
     }
@@ -108,7 +124,9 @@ class VideoAutoPlaySystem {
      * Exibir vídeo em fullscreen
      */
     showVideo() {
-        console.log(`🎬 Exibindo vídeo ${this.currentVideoIndex + 1}/${this.videos.length}`);
+        console.log(`🎬 [VIDEO-SYSTEM] showVideo() chamado`);
+        console.log(`🎬 [VIDEO-SYSTEM] Vídeos disponíveis: ${this.videos.length}`);
+        console.log(`🎬 [VIDEO-SYSTEM] Índice atual: ${this.currentVideoIndex}`);
         
         const modal = document.getElementById('video-modal');
         const videoSource = document.getElementById('video-source');
@@ -117,12 +135,26 @@ class VideoAutoPlaySystem {
         const videoTotal = document.getElementById('video-total');
         const videoplayer = document.getElementById('video-player');
 
-        if (!modal || !videoSource) {
-            console.error(`❌ Elementos de vídeo não encontrados no DOM`);
+        if (!modal) {
+            console.error(`❌ [VIDEO-SYSTEM] Elemento #video-modal não encontrado!`);
+            return;
+        }
+        if (!videoSource) {
+            console.error(`❌ [VIDEO-SYSTEM] Elemento #video-source não encontrado!`);
+            return;
+        }
+        if (!videoplayer) {
+            console.error(`❌ [VIDEO-SYSTEM] Elemento #video-player não encontrado!`);
             return;
         }
 
         const video = this.videos[this.currentVideoIndex];
+        console.log(`🎬 [VIDEO-SYSTEM] Vídeo selecionado:`, video);
+
+        if (!video) {
+            console.error(`❌ [VIDEO-SYSTEM] Vídeo não encontrado no índice ${this.currentVideoIndex}`);
+            return;
+        }
 
         // Atualizar informações
         videoTitulo.textContent = video.nome || 'Vídeo';
@@ -130,16 +162,20 @@ class VideoAutoPlaySystem {
         videoTotal.textContent = this.videos.length;
 
         // Usar URL de visualização do Google Drive
-        videoSource.src = video.urlEmbed || video.urlVisualizar;
+        const videoUrl = video.urlVideo || video.urlEmbed || video.urlVisualizar;
+        console.log(`🎬 [VIDEO-SYSTEM] URL do vídeo: ${videoUrl}`);
+        
+        videoSource.src = videoUrl;
         videoplayer.load();
 
         // Mostrar modal
+        console.log(`🎬 [VIDEO-SYSTEM] Mostrando modal...`);
         modal.classList.remove('hidden');
         modal.classList.add('visible', 'show-video');
 
         // Play automático
         videoplayer.play().catch(err => {
-            console.warn(`⚠️ Auto-play bloqueado:`, err.message);
+            console.warn(`⚠️ [VIDEO-SYSTEM] Auto-play bloqueado:`, err.message);
         });
 
         this.isPlayingVideo = true;
@@ -148,6 +184,8 @@ class VideoAutoPlaySystem {
 
         // Passar pro próximo vídeo na próxima rodada
         this.currentVideoIndex = (this.currentVideoIndex + 1) % this.videos.length;
+        
+        console.log(`✅ [VIDEO-SYSTEM] Vídeo sendo exibido!`);
     }
 
     /**
@@ -258,22 +296,42 @@ let videoSystem = null;
  * Inicializar sistema quando documento estiver pronto
  */
 const initVideoSystem = async () => {
+    console.log(`🎬 [VIDEO-SYSTEM] Iniciando sistema de auto-play...`);
+    
     if (!VIDEO_CONFIG.ENABLED) {
         console.log(`ℹ️ Sistema de auto-play desativado`);
         return;
     }
 
-    videoSystem = new VideoAutoPlaySystem();
-    await videoSystem.init();
+    try {
+        videoSystem = new VideoAutoPlaySystem();
+        console.log(`✅ [VIDEO-SYSTEM] Instância criada`);
+        
+        await videoSystem.init();
+        console.log(`✅ [VIDEO-SYSTEM] Sistema iniciado com sucesso`);
+        
+        // Exportar para uso global
+        window.videoSystem = videoSystem;
+        console.log(`✅ [VIDEO-SYSTEM] Exportado para window.videoSystem`);
+    } catch (error) {
+        console.error(`❌ [VIDEO-SYSTEM] Erro ao inicializar:`, error.message);
+        console.error(error.stack);
+    }
 };
 
 // Iniciar quando página carregar
+console.log(`🎬 [VIDEO-SYSTEM] Script carregado, readyState = ${document.readyState}`);
+
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initVideoSystem);
+    console.log(`🎬 [VIDEO-SYSTEM] Esperando DOMContentLoaded...`);
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log(`🎬 [VIDEO-SYSTEM] DOMContentLoaded disparado!`);
+        initVideoSystem();
+    });
 } else {
+    console.log(`🎬 [VIDEO-SYSTEM] DOM já carregado, inicializando agora...`);
     initVideoSystem();
 }
 
-// Exportar para uso global
-window.videoSystem = videoSystem;
+// Exportar classe também
 window.VideoAutoPlaySystem = VideoAutoPlaySystem;

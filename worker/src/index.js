@@ -1588,9 +1588,10 @@ async function buscarVideosDoGoogleDrive() {
             tipo: file.mimeType,
             criado: file.createdTime,
             tamanho: file.size ? `${Math.round(file.size / 1024 / 1024)}MB` : 'desconhecido',
-            // URLs para diferentes formas de acesso
+            // URL direta para reprodução (Google Drive renderiza como HTML5 video)
+            urlVideo: `https://drive.google.com/uc?export=download&id=${file.id}`,
+            // URLs de fallback
             urlVisualizar: `https://drive.google.com/file/d/${file.id}/preview`,
-            urlDownload: `https://drive.google.com/uc?export=download&id=${file.id}`,
             urlEmbed: `https://drive.google.com/file/d/${file.id}/view?embedded=true`,
             webViewLink: file.webViewLink // Link direto no Drive
         }));
