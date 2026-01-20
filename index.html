@@ -93,9 +93,15 @@
 
     <!-- 🎬 VIDEO OVERLAY (Aparece sobre o dashboard durante o ciclo de vídeos) -->
     <div id="video-overlay" class="video-overlay hidden">
+        <!-- Vídeo Principal -->
         <video id="video-player" class="video-player" playsinline webkit-playsinline muted autoplay>
             <source id="video-source" src="" type="video/mp4">
             Seu navegador não suporta vídeo HTML5.
+        </video>
+        
+        <!-- Vídeo Pré-carregado (para transição suave) -->
+        <video id="video-preload" class="video-player video-preload" playsinline webkit-playsinline muted style="display: none;">
+            <source id="video-preload-source" src="" type="video/mp4">
         </video>
         
         <!-- Info do Vídeo (Sobreposto) -->
