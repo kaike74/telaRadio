@@ -367,10 +367,6 @@ class VideoAutoPlaySystem {
 
         console.log(`▶️  [VIDEO-SYSTEM] ${this.currentVideoIndex + 1}/${this.currentCycleSongs.length}: ${videoData.nome}`);
         
-        // Atualizar info na UI
-        document.getElementById('video-atual').textContent = this.currentVideoIndex + 1;
-        document.getElementById('video-total').textContent = this.currentCycleSongs.length;
-        
         // Se estamos trocando, fazer fade out do antigo
         const otherElement = this.usePrimary ? this.preloadVideo : this.primaryVideo;
         if (otherElement && otherElement.style.display !== 'none') {
@@ -499,15 +495,6 @@ class VideoAutoPlaySystem {
             // Agendar próxima transição
             this.scheduleNextTransition();
             return;
-        }
-        
-        const minutos = Math.floor(tempoRestante / 60000);
-        const segundos = Math.floor((tempoRestante % 60000) / 1000);
-        const formatado = `${minutos}:${segundos.toString().padStart(2, '0')}`;
-        
-        const timerElement = document.getElementById('video-timer');
-        if (timerElement) {
-            timerElement.textContent = formatado;
         }
     }
 
