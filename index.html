@@ -91,6 +91,29 @@
         </div>
     </div>
 
+    <!-- 🎬 CONTAINER DE VÍDEO FULL-SCREEN -->
+    <div id="video-modal" class="video-modal hidden">
+        <div class="video-container">
+            <video id="video-player" class="video-player" autoplay playsinline controls>
+                <source id="video-source" src="" type="video/mp4">
+                Seu navegador não suporta reprodução de vídeos.
+            </video>
+            <div class="video-info">
+                <h3 id="video-titulo">Carregando...</h3>
+                <div class="video-contador">
+                    <span id="video-atual">0</span> / <span id="video-total">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indicador de modo (dashboard/vídeo) -->
+    <div id="modo-indicator" class="modo-indicator">
+        <span id="modo-texto">Dashboard</span>
+        <span id="modo-timer">10:00</span>
+    </div>
+
+    <script src="video-system.js"></script>
     <script src="script.js"></script>
 </body>
 

@@ -25,6 +25,12 @@ const API_KEY = "9620cf74-856d-40c2-a091-248e4f322caa";
 const GEONAMES_USERNAME = "kaike";
 const DURACAO_ANIMACAO_SEGUNDOS = 30; // Duração da animação no mapa (30 segundos)
 
+// 🎥 CONFIGURAÇÃO GOOGLE DRIVE PARA VÍDEOS
+const GOOGLE_DRIVE_CONFIG = {
+    API_KEY: "AIzaSyAPz4r77CUVZWDS3tjBi1V2kJqE6dOU-bo",
+    FOLDER_ID: "1kxhIUv3aekp9lnrCnUom1f6HBnC1kGM5"
+};
+
 // 📋 ARMAZENAR LOGS DE INSERÇÕES
 let logsInsercoesGlobal = [];
 
@@ -73,10 +79,16 @@ export default {
                 response = await handleCoordenada(env, corsHeaders, url);
             } else if (url.pathname === "/api/logs/insercoes") {
                 response = await handleLogsInsercoes(env, corsHeaders);
+            } else if (url.pathname === "/api/videos") {
+                response = await handleVideos(env, corsHeaders);
+            } else if (url.pathname === "/api/videos/check") {
+                response = await handleVideosCheck(env, corsHeaders);
+            } else if (url.pathname === "/api/videos/test") {
+                response = await handleVideosTest(env, corsHeaders);
             } else {
                 response = new Response(JSON.stringify({
                     error: "Endpoint não encontrado",
-                    endpoints: ["/api/health", "/api/dashboard", "/api/insercoes/recentes", "/api/coordenada", "/api/logs/insercoes"]
+                    endpoints: ["/api/health", "/api/dashboard", "/api/insercoes/recentes", "/api/coordenada", "/api/logs/insercoes", "/api/videos", "/api/videos/check", "/api/videos/test"]
                 }), {
                     status: 404,
                     headers: { "Content-Type": "application/json" }
