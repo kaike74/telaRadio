@@ -1505,27 +1505,23 @@ async function handleVideos(env, corsHeaders) {
         
         // Verificar se a API Key está configurada
         if (!GOOGLE_DRIVE_CONFIG.API_KEY || GOOGLE_DRIVE_CONFIG.API_KEY === "COLOQUE_API_KEY_AQUI") {
+            console.warn(`⚠️ API Key não configurada`);
             return new Response(JSON.stringify({
                 sucesso: false,
-                erro: "Google Drive API Key não configurada",
-                instrucoes: {
-                    passo1: "Ir para: https://console.cloud.google.com/",
-                    passo2: "Clicar em 'Criar Projeto'",
-                    passo3: "Ir para APIs e Serviços → Biblioteca",
-                    passo4: "Procurar 'Google Drive API' e ativar",
-                    passo5: "Ir para Credenciais",
-                    passo6: "Clicar 'Criar Credencial' → 'Chave de API'",
-                    passo7: "Copiar a chave gerada",
-                    passo8: "Colar em GOOGLE_DRIVE_CONFIG.API_KEY no código"
-                }
+                erro: "Google Drive API Key não configurada"
             }), {
                 status: 400,
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
             });
         }
 
+        console.log(`🎥 API Key está configurada`);
+        console.log(`🎥 Folder ID: ${GOOGLE_DRIVE_CONFIG.FOLDER_ID}`);
+
         // Chamar Google Drive API para listar vídeos
         const videos = await buscarVideosDoGoogleDrive();
+        
+        console.log(`🎥 Vídeos retornados: ${videos.length}`);
 
         return new Response(JSON.stringify({
             sucesso: true,
@@ -1537,9 +1533,11 @@ async function handleVideos(env, corsHeaders) {
 
     } catch (error) {
         console.error(`❌ ERRO em handleVideos: ${error.message}`);
+        console.error(`Stack: ${error.stack}`);
         return new Response(JSON.stringify({
             sucesso: false,
-            erro: error.message
+            erro: error.message,
+            stack: error.stack.substring(0, 200)
         }), {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -1556,28 +1554,52 @@ async function buscarVideosDoGoogleDrive() {
         const folderId = GOOGLE_DRIVE_CONFIG.FOLDER_ID;
         const apiKey = GOOGLE_DRIVE_CONFIG.API_KEY;
 
+        console.log(`🎥 === INICIANDO buscarVideosDoGoogleDrive ===`);
+        console.log(`🎥 API_KEY length: ${apiKey?.length || 0}`);
+        console.log(`🎥 FOLDER_ID: ${folderId}`);
+
         if (!apiKey || apiKey === "COLOQUE_API_KEY_AQUI") {
             throw new Error("API_KEY do Google Drive não configurada");
         }
 
+        if (!folderId || folderId === "COLOQUE_FOLDER_ID_AQUI") {
+            throw new Error("FOLDER_ID do Google Drive não configurado");
+        }
+
         // Query para buscar vídeos (MP4, WebM, Mov, etc)
-        const query = encodeURIComponent(`'${folderId}' in parents and (mimeType='video/mp4' or mimeType='video/webm' or mimeType='video/quicktime' or mimeType='video/x-msvideo') and trashed=false`);
+        const mimeTypes = "mimeType='video/mp4' or mimeType='video/webm' or mimeType='video/quicktime' or mimeType='video/x-msvideo'";
+        const query = encodeURIComponent(`'${folderId}' in parents and (${mimeTypes}) and trashed=false`);
         
         const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,webViewLink,size)&orderBy=createdTime+desc&pageSize=50&key=${apiKey}`;
 
-        console.log(`🔍 Buscando vídeos na pasta: ${folderId}`);
+        console.log(`🎥 URL (primeiros 100 chars): ${url.substring(0, 100)}...`);
+        console.log(`🎥 Iniciando fetch para Google Drive API...`);
 
         const response = await fetch(url);
 
+        console.log(`🎥 Resposta recebida - Status: ${response.status}`);
+        console.log(`🎥 Content-Type: ${response.headers.get("content-type")}`);
+
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(`Erro ao chamar Google Drive API: ${response.status} - ${errorData.error?.message || response.statusText}`);
+            console.error(`🎥 ❌ Response NOT OK - Status: ${response.status}`);
+            const errorText = await response.text();
+            console.error(`🎥 ❌ Response body (primeiros 200 chars): ${errorText.substring(0, 200)}`);
+            
+            try {
+                const errorData = JSON.parse(errorText);
+                throw new Error(`Erro ao chamar Google Drive API: ${response.status} - ${errorData.error?.message || response.statusText}`);
+            } catch (parseError) {
+                throw new Error(`Erro ao chamar Google Drive API: ${response.status} - ${response.statusText}`);
+            }
         }
 
+        console.log(`🎥 ✅ Response OK - tentando parsear JSON...`);
         const data = await response.json();
+        console.log(`🎥 ✅ JSON parseado com sucesso`);
+        console.log(`🎥 Files array length: ${data.files?.length || 0}`);
 
         if (!data.files || data.files.length === 0) {
-            console.log(`⚠️ Nenhum vídeo encontrado na pasta`);
+            console.log(`🎥 ⚠️ Nenhum vídeo encontrado na pasta`);
             return [];
         }
 
@@ -1596,15 +1618,17 @@ async function buscarVideosDoGoogleDrive() {
             webViewLink: file.webViewLink // Link direto no Drive
         }));
 
-        console.log(`✅ ${videos.length} vídeos encontrados`);
+        console.log(`🎥 ✅ ${videos.length} vídeos processados e mapeados`);
         videos.slice(0, 5).forEach((v, i) => {
-            console.log(`   ${i+1}. ${v.nome} (${v.tamanho})`);
+            console.log(`🎥    ${i+1}. ${v.nome} (${v.tamanho})`);
         });
 
+        console.log(`🎥 ✅ === FIM buscarVideosDoGoogleDrive - Retornando ${videos.length} vídeos ===`);
         return videos;
 
     } catch (error) {
-        console.error(`❌ ERRO em buscarVideosDoGoogleDrive: ${error.message}`);
+        console.error(`🎥 ❌ ERRO em buscarVideosDoGoogleDrive: ${error.message}`);
+        console.error(`🎥 ❌ Stack trace: ${error.stack?.substring(0, 300)}`);
         throw error;
     }
 }

@@ -300,7 +300,7 @@ let insercoesPreviasIds = new Set();
 // INICIALIZAÇÃO
 // =========================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Inicializar mapa
     inicializarMapa();
 
@@ -312,6 +312,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ⭐ NOVO: Iniciar limpeza periódica de memória (a cada 30 minutos)
     iniciarLimpezaPeriodica();
+
+    // 🎬 NOVO: Inicializar sistema de auto-play de vídeos
+    console.log('🎬 Iniciando sistema de vídeos...');
+    if (window.videoSystem) {
+        try {
+            await window.videoSystem.init();
+            console.log('✅ Sistema de vídeos inicializado com sucesso');
+        } catch (error) {
+            console.error('❌ Erro ao inicializar sistema de vídeos:', error);
+        }
+    } else {
+        console.warn('⚠️ video-system.js não foi carregado');
+    }
 
     // Iniciar orquestração serializada
     iniciarCicloAtualizacao();

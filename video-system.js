@@ -57,9 +57,14 @@ class VideoAutoPlaySystem {
      */
     async loadVideos() {
         try {
-            console.log(`🎬 [VIDEO-SYSTEM] Chamando /api/videos...`);
-            const response = await fetch('/api/videos');
+            console.log(`🎬 [VIDEO-SYSTEM] Chamando API de vídeos...`);
+            // Usar URL absoluta do worker do Cloudflare
+            const apiUrl = 'https://dashboard-radio-worker.kaike-458.workers.dev/api/videos';
+            console.log(`🎬 [VIDEO-SYSTEM] URL da API: ${apiUrl}`);
+            
+            const response = await fetch(apiUrl);
             console.log(`🎬 [VIDEO-SYSTEM] Resposta recebida, status: ${response.status}`);
+            console.log(`🎬 [VIDEO-SYSTEM] Content-Type: ${response.headers.get('content-type')}`);
             
             const data = await response.json();
             console.log(`🎬 [VIDEO-SYSTEM] JSON parseado:`, data);
@@ -68,7 +73,7 @@ class VideoAutoPlaySystem {
                 this.videos = data.videos;
                 console.log(`✅ [VIDEO-SYSTEM] ${this.videos.length} vídeos carregados:`);
                 this.videos.forEach((v, i) => {
-                    console.log(`   ${i+1}. ${v.nome}`);
+                    console.log(`   ${i+1}. ${v.nome} (${v.tamanho})`);
                 });
                 return true;
             } else {
@@ -77,7 +82,7 @@ class VideoAutoPlaySystem {
             }
         } catch (error) {
             console.error(`❌ [VIDEO-SYSTEM] Erro ao carregar vídeos:`, error.message);
-            console.error(error.stack);
+            console.error(`❌ [VIDEO-SYSTEM] Stack:`, error.stack);
             return false;
         }
     }
