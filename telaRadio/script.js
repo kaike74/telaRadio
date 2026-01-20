@@ -391,7 +391,7 @@ window.DEBUG = {
 // INICIALIZAÇÃO
 // =========================
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     // Inicializar mapa
     inicializarMapa();
 
@@ -404,18 +404,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ⭐ NOVO: Iniciar limpeza periódica de memória (a cada 30 minutos)
     iniciarLimpezaPeriodica();
 
-    // 🎬 NOVO: Inicializar sistema de auto-play de vídeos
-    console.log('🎬 Iniciando sistema de vídeos...');
-    if (window.videoSystem) {
-        try {
-            await window.videoSystem.init();
-            console.log('✅ Sistema de vídeos inicializado com sucesso');
-        } catch (error) {
-            console.error('❌ Erro ao inicializar sistema de vídeos:', error);
-        }
-    } else {
-        console.warn('⚠️ video-system.js não foi carregado');
-    }
+    // 🎬 NOVO: Sistema de vídeos em background (auto-inicializa)
+    console.log('🎬 Sistema de auto-play carregado. Vídeos rodando em background...');
 
     // Iniciar ciclo serializado de atualização
     iniciarCicloAtualizacao();
