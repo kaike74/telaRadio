@@ -112,13 +112,13 @@ class VideoAutoPlaySystem {
         this.preloadProgress = 0;
         this.startPreloadingVideos(this.nextCycleSongs);
 
-        // Monitor de progresso
+        // Monitor de progresso (log a cada 10 segundos)
         this.dashboardCheckInterval = setInterval(() => {
             const porcentagem = Math.round((this.preloadProgress / this.nextCycleSongs.length) * 100);
             if (porcentagem > 0 && porcentagem < 100) {
                 console.log(`⏳ Pré-carregamento: ${this.preloadProgress}/${this.nextCycleSongs.length} (${porcentagem}%)`);
             }
-        }, 5000); // Log a cada 5 segundos
+        }, 10000);
     }
 
     /**
@@ -146,32 +146,50 @@ class VideoAutoPlaySystem {
     }
 
     /**
-     * Fazer cache de um vídeo (fetch para garantir que está pronto)
+     * Fazer cache de um vídeo (download real para garantir que está pronto)
      */
     cacheVideo(videoData, index, total) {
         return new Promise((resolve) => {
             try {
                 const videoUrl = videoData.urlVideo;
-                console.log(`📥 ${index + 1}/${total} Pré-carregando: ${videoData.nome}...`);
+                console.log(`📥 ${index + 1}/${total} Fazendo download: ${videoData.nome}...`);
                 
-                // Fazer HEAD request para verificar se o vídeo é acessível
-                fetch(videoUrl, { method: 'HEAD' })
+                // Fazer download real do vídeo
+                fetch(videoUrl)
                     .then(response => {
-                        if (response.ok) {
-                            this.videoCache.set(videoData.id, {
-                                ...videoData,
-                                cached: true,
-                                timestamp: Date.now()
-                            });
-                            console.log(`✅ ${index + 1}/${total} Pronto: ${videoData.nome}`);
-                        } else {
-                            console.warn(`⚠️  ${index + 1}/${total} Erro ao acessar: ${videoData.nome}`);
+                        if (!response.ok) {
+                            throw new Error(`Status ${response.status}`);
                         }
+                        
+                        // Ler como blob
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        // Criar blob URL para reprodução instantânea
+                        const blobUrl = URL.createObjectURL(blob);
+                        
+                        // Armazenar com URL local
+                        this.videoCache.set(videoData.id, {
+                            ...videoData,
+                            urlVideo: blobUrl, // Substituir URL remota por blob URL
+                            originalUrl: videoUrl,
+                            cached: true,
+                            size: blob.size,
+                            timestamp: Date.now()
+                        });
+                        
+                        console.log(`✅ ${index + 1}/${total} Pronto: ${videoData.nome} (${this.formatBytes(blob.size)})`);
                         resolve();
                     })
                     .catch(error => {
                         console.warn(`⚠️  ${index + 1}/${total} Erro: ${videoData.nome} - ${error.message}`);
-                        resolve(); // Continuar mesmo com erro
+                        // Registrar mesmo com erro, pode tentar usar URL original depois
+                        this.videoCache.set(videoData.id, {
+                            ...videoData,
+                            cached: false,
+                            error: error.message
+                        });
+                        resolve();
                     });
                 
             } catch (error) {
@@ -179,6 +197,17 @@ class VideoAutoPlaySystem {
                 resolve();
             }
         });
+    }
+
+    /**
+     * Formatar bytes para formato legível
+     */
+    formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
     async loadVideos() {
         try {
@@ -328,7 +357,14 @@ class VideoAutoPlaySystem {
             return;
         }
 
-        const videoUrl = videoData.urlVideo;
+        // Usar URL em cache se disponível (blob URL)
+        let videoUrl = videoData.urlVideo;
+        const cached = this.videoCache.get(videoData.id);
+        if (cached && cached.urlVideo) {
+            videoUrl = cached.urlVideo;
+            console.log(`💾 Usando vídeo em cache (blob URL)`);
+        }
+
         console.log(`▶️  [VIDEO-SYSTEM] ${this.currentVideoIndex + 1}/${this.currentCycleSongs.length}: ${videoData.nome}`);
         
         // Atualizar info na UI
@@ -345,7 +381,7 @@ class VideoAutoPlaySystem {
             }, 300);
         }
         
-        // Carregar vídeo (já pré-carregado, será rápido)
+        // Carregar vídeo (blob URL é instantâneo)
         videoSource.src = videoUrl;
         currentElement.load();
         
@@ -354,15 +390,29 @@ class VideoAutoPlaySystem {
         currentElement.classList.remove('fade-out');
         currentElement.classList.add('fade-in');
         
-        // Reproduzir imediatamente
-        const playPromise = currentElement.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                console.warn(`⚠️  Erro ao reproduzir:`, error.message);
-                // Pular para próximo
-                setTimeout(() => this.playNextVideoInCycle(), 1000);
-            });
-        }
+        // Reproduzir com retry em caso de erro
+        const attemptPlay = () => {
+            const playPromise = currentElement.play();
+            if (playPromise !== undefined) {
+                playPromise
+                    .catch(error => {
+                        console.warn(`⚠️  Erro ao reproduzir (tentativa 1):`, error.message);
+                        // Tentar novamente após 500ms
+                        setTimeout(() => {
+                            const retryPromise = currentElement.play();
+                            if (retryPromise !== undefined) {
+                                retryPromise.catch(err => {
+                                    console.warn(`⚠️  Erro ao reproduzir (tentativa 2):`, err.message);
+                                    // Pular para próximo vídeo
+                                    setTimeout(() => this.playNextVideoInCycle(), 1000);
+                                });
+                            }
+                        }, 500);
+                    });
+            }
+        };
+        
+        attemptPlay();
         
         // Event listener para quando vídeo terminar
         currentElement.onended = () => {
@@ -370,22 +420,25 @@ class VideoAutoPlaySystem {
             this.playNextVideoInCycle();
         };
         
-        // Pré-carregar próximo vídeo no buffer (para ser extra safe)
+        // Pré-carregar próximo vídeo no buffer
         const nextIndex = this.currentVideoIndex + 1;
         if (nextIndex < this.currentCycleSongs.length) {
             setTimeout(() => {
                 const nextVideo = this.currentCycleSongs[nextIndex];
-                const preloadElem = nextIndex === this.currentVideoIndex + 1 ? this.preloadVideo : this.primaryVideo;
-                const preloadSource = nextIndex === this.currentVideoIndex + 1 ? 
+                const nextCached = this.videoCache.get(nextVideo.id);
+                const nextUrl = (nextCached && nextCached.urlVideo) ? nextCached.urlVideo : nextVideo.urlVideo;
+                
+                const preloadElem = this.usePrimary ? this.preloadVideo : this.primaryVideo;
+                const preloadSource = this.usePrimary ? 
                     document.getElementById('video-preload-source') : 
                     document.getElementById('video-source');
                 
                 if (preloadSource) {
-                    preloadSource.src = nextVideo.urlVideo;
+                    preloadSource.src = nextUrl;
                     preloadElem.load();
                     console.log(`⏳ Buffer pré-carregado: ${nextIndex + 1}/${this.currentCycleSongs.length}`);
                 }
-            }, 500); // Começar a pré-carregar 500ms depois
+            }, 500);
         }
     }
 
