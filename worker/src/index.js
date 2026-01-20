@@ -85,10 +85,14 @@ export default {
                 response = await handleVideosCheck(env, corsHeaders);
             } else if (url.pathname === "/api/videos/test") {
                 response = await handleVideosTest(env, corsHeaders);
+            } else if (url.pathname.startsWith("/api/video/")) {
+                // Proxy de vídeo do Google Drive
+                const fileId = url.pathname.split("/").pop();
+                response = await proxyGoogleDriveVideo(fileId);
             } else {
                 response = new Response(JSON.stringify({
                     error: "Endpoint não encontrado",
-                    endpoints: ["/api/health", "/api/dashboard", "/api/insercoes/recentes", "/api/coordenada", "/api/logs/insercoes", "/api/videos", "/api/videos/check", "/api/videos/test"]
+                    endpoints: ["/api/health", "/api/dashboard", "/api/insercoes/recentes", "/api/coordenada", "/api/logs/insercoes", "/api/videos", "/api/videos/check", "/api/videos/test", "/api/video/:id"]
                 }), {
                     status: 404,
                     headers: { "Content-Type": "application/json" }
@@ -1610,9 +1614,9 @@ async function buscarVideosDoGoogleDrive() {
             tipo: file.mimeType,
             criado: file.createdTime,
             tamanho: file.size ? `${Math.round(file.size / 1024 / 1024)}MB` : 'desconhecido',
-            // URL direta para reprodução (streaming direto do Google Drive)
-            urlVideo: `https://drive.google.com/uc?export=view&id=${file.id}`,
-            // URLs de fallback
+            // URL do nosso proxy (streaming direto via worker)
+            urlVideo: `https://dashboard-radio-worker.kaike-458.workers.dev/api/video/${file.id}`,
+            // URLs de fallback (desativadas por enquanto)
             urlVisualizar: `https://drive.google.com/file/d/${file.id}/preview`,
             urlEmbed: `https://drive.google.com/file/d/${file.id}/view?embedded=true`,
             webViewLink: file.webViewLink // Link direto no Drive
@@ -2645,5 +2649,53 @@ async function handleVideoStream(env, corsHeaders, url) {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
+    }
+}
+
+/**
+ * 🎥 PROXY DE VÍDEO DO GOOGLE DRIVE
+ * Faz streaming direto do Google Drive sem problemas de CORS
+ */
+async function proxyGoogleDriveVideo(fileId) {
+    try {
+        console.log(`🎥 [PROXY] Iniciando stream de vídeo: ${fileId}`);
+        
+        // URL de download direto do Google Drive
+        const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        console.log(`🎥 [PROXY] Fetching: ${url}`);
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+        
+        if (!response.ok) {
+            console.error(`🎥 [PROXY] ❌ Erro: ${response.status}`);
+            return new Response('Vídeo não encontrado', { status: 404 });
+        }
+        
+        console.log(`🎥 [PROXY] ✅ Stream iniciado - ${response.headers.get('content-type')}`);
+        
+        // Proxificar a resposta com headers apropriados para vídeo
+        return new Response(response.body, {
+            status: 200,
+            headers: {
+                'Content-Type': 'video/mp4',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
+                'Access-Control-Allow-Headers': 'Range, Content-Type',
+                'Access-Control-Expose-Headers': 'Content-Length, Content-Type, Content-Range',
+                'Cache-Control': 'public, max-age=3600',
+                'Accept-Ranges': 'bytes',
+                'Connection': 'keep-alive',
+                'X-Content-Type-Options': 'nosniff'
+            }
+        });
+        
+    } catch (error) {
+        console.error(`🎥 [PROXY] ❌ ERRO: ${error.message}`);
+        return new Response('Erro ao carregar vídeo', { status: 500 });
     }
 }
