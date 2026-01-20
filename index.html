@@ -91,9 +91,23 @@
         </div>
     </div>
 
-    <!-- 🎬 SISTEMA DE AUTO-PLAY EM BACKGROUND (INVISÍVEL) -->
-    <!-- Os vídeos rodam em background sem ocupar espaço na tela -->
-    <!-- Elemento <video> é criado dinamicamente por video-system.js -->
+    <!-- 🎬 VIDEO OVERLAY (Aparece sobre o dashboard durante o ciclo de vídeos) -->
+    <div id="video-overlay" class="video-overlay hidden">
+        <video id="video-player" class="video-player" playsinline webkit-playsinline muted autoplay>
+            <source id="video-source" src="" type="video/mp4">
+            Seu navegador não suporta vídeo HTML5.
+        </video>
+        
+        <!-- Info do Vídeo (Sobreposto) -->
+        <div class="video-info">
+            <div class="video-counter">
+                <span id="video-atual">1</span> / <span id="video-total">0</span>
+            </div>
+            <div class="video-duration">
+                <span id="video-timer">03:00</span>
+            </div>
+        </div>
+    </div>
 
     <script src="video-system.js"></script>
     <script src="script.js"></script>
