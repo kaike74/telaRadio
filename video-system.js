@@ -4,7 +4,7 @@
  */
 
 const VIDEO_CONFIG = {
-    DASHBOARD_DURATION: 10 * 60 * 1000, // 10 minutos
+    DASHBOARD_DURATION: 1 * 60 * 1000,  // 1 minuto (para testes)
     VIDEO_DURATION: 3 * 60 * 1000,      // 3 minutos
     ENABLED: true,
     PRELOAD: true,
