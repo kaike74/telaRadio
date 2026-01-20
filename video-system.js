@@ -67,19 +67,41 @@ class VideoAutoPlaySystem {
     }
 
     /**
-     * Iniciar ciclo: Dashboard (10min) → Vídeo (3min) → Repetir
+     * Iniciar ciclo: Dashboard (1min) → Vídeo (3min) → Repetir
      */
     startCycle() {
         console.log(`🔄 Iniciando ciclo de exibição...`);
-        this.cycleTimer = setInterval(() => {
+        this.currentMode = 'dashboard';
+        this.timeRemaining = VIDEO_CONFIG.DASHBOARD_DURATION;
+        this.scheduleNextTransition();
+    }
+
+    /**
+     * Agendar próxima transição (dashboard ↔ vídeo)
+     */
+    scheduleNextTransition() {
+        // Limpar timer anterior se existir
+        if (this.cycleTimer) {
+            clearTimeout(this.cycleTimer);
+        }
+
+        const duracao = this.currentMode === 'dashboard' 
+            ? VIDEO_CONFIG.DASHBOARD_DURATION 
+            : VIDEO_CONFIG.VIDEO_DURATION;
+
+        console.log(`⏱️ Agendada transição em ${duracao / 1000}s`);
+
+        this.cycleTimer = setTimeout(() => {
             if (this.currentMode === 'dashboard') {
-                // Passar para modo vídeo
+                console.log(`🎬 Transição: Dashboard → Vídeo`);
                 this.showVideo();
             } else {
-                // Passar para modo dashboard
+                console.log(`📊 Transição: Vídeo → Dashboard`);
                 this.hideVideo();
             }
-        }, this.currentMode === 'dashboard' ? VIDEO_CONFIG.DASHBOARD_DURATION : VIDEO_CONFIG.VIDEO_DURATION);
+            // Agendar próxima transição
+            this.scheduleNextTransition();
+        }, duracao);
     }
 
     /**
@@ -122,12 +144,10 @@ class VideoAutoPlaySystem {
 
         this.isPlayingVideo = true;
         this.currentMode = 'video';
+        this.timeRemaining = VIDEO_CONFIG.VIDEO_DURATION;
 
         // Passar pro próximo vídeo na próxima rodada
         this.currentVideoIndex = (this.currentVideoIndex + 1) % this.videos.length;
-
-        // Resetar countdown
-        this.timeRemaining = VIDEO_CONFIG.VIDEO_DURATION;
     }
 
     /**
@@ -156,8 +176,6 @@ class VideoAutoPlaySystem {
 
         this.isPlayingVideo = false;
         this.currentMode = 'dashboard';
-
-        // Resetar countdown
         this.timeRemaining = VIDEO_CONFIG.DASHBOARD_DURATION;
     }
 
@@ -165,15 +183,19 @@ class VideoAutoPlaySystem {
      * Iniciar conta regressiva do timer
      */
     startCountdown() {
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+        }
+        
         this.countdownInterval = setInterval(() => {
             this.timeRemaining -= 1000;
-            this.updateTimerDisplay();
-
-            if (this.timeRemaining <= 0) {
-                this.timeRemaining = this.currentMode === 'dashboard' 
-                    ? VIDEO_CONFIG.DASHBOARD_DURATION 
-                    : VIDEO_CONFIG.VIDEO_DURATION;
+            
+            // Não deixar negativo
+            if (this.timeRemaining < 0) {
+                this.timeRemaining = 0;
             }
+            
+            this.updateTimerDisplay();
         }, 1000);
     }
 
