@@ -10,15 +10,15 @@
 
 const VIDEO_CONFIG = {
     // Timing (em milisegundos)
-    DASHBOARD_DURATION: 60 * 1000,         // 1 minuto para TESTE (depois será 10*60*1000)
-    VIDEO_CYCLE_DURATION: 3 * 60 * 1000,   // 3 minutos de vídeos
-    SINGLE_VIDEO_DURATION: 25000,           // ~25 segundos por vídeo (duração média estimada)
+    DASHBOARD_DURATION: 10 * 60 * 1000,     // 10 minutos para pré-carregar vídeos
+    VIDEO_CYCLE_DURATION: 3 * 60 * 1000,    // 3 minutos de vídeos
+    SINGLE_VIDEO_DURATION: 25000,            // ~25 segundos por vídeo (duração média estimada)
     
     // Configurações
     ENABLED: true,
     AUTO_LOOP: true,
     LOG_CHANGES: true,
-    PRELOAD_BUFFER: 2                       // Número de vídeos a pré-carregar
+    PRELOAD_BUFFER: 2                        // Número de vídeos a pré-carregar
 };
 
 class VideoAutoPlaySystem {
