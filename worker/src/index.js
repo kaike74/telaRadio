@@ -65,45 +65,6 @@ export default {
                 }), {
                     headers: { "Content-Type": "application/json" }
                 });
-            } else if (url.pathname === "/api/debug/kv") {
-                // 🔍 DEBUG: Mostrar status do KV
-                let kvStatus = "SEM_KV";
-                let cacheData = null;
-                
-                try {
-                    if (env.DASHBOARD_KV) {
-                        const agora = new Date();
-                        const offsetBrasilia = -3 * 60;
-                        const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
-                        const dataHoje = agoraBrasilia.toISOString().split('T')[0];
-                        
-                        const cache = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
-                        if (cache) {
-                            kvStatus = "COM_DADOS";
-                            const parsed = JSON.parse(cache);
-                            cacheData = {
-                                campanhas: parsed.todasCampanhas?.length || 0,
-                                emissoras: parsed.emissorasProgramadas?.length || 0,
-                                salvoEm: parsed.salvoEm
-                            };
-                        } else {
-                            kvStatus = "VAZIO";
-                        }
-                    }
-                } catch (error) {
-                    kvStatus = `ERRO: ${error.message}`;
-                }
-                
-                response = new Response(JSON.stringify({
-                    status: kvStatus,
-                    dados: cacheData,
-                    timestamp: new Date().toISOString()
-                }), {
-                    headers: { "Content-Type": "application/json" }
-                });
-            } else if (url.pathname === "/api/debug/run-scheduled") {
-                // 🔧 ADMIN: Rodar lógica de Scheduled Worker manualmente
-                response = await handleRunScheduled(env, corsHeaders);
             } else if (url.pathname === "/api/dashboard") {
                 response = await handleDashboard(env, corsHeaders);
             } else if (url.pathname === "/api/insercoes/recentes") {
@@ -138,97 +99,6 @@ export default {
     }
 };
 
-// ===== ENDPOINT: Rodar Scheduled Worker Manualmente =====
-async function handleRunScheduled(env, corsHeaders) {
-    try {
-        console.log(`\n${'='.repeat(120)}`);
-        console.log(`⏰ MANUAL SCHEDULED WORKER EXECUTION`);
-        console.log(`   Timestamp: ${new Date().toISOString()}`);
-        console.log(`${'='.repeat(120)}\n`);
-
-        // Pegar data e hora
-        const now = new Date();
-        const dataHoje = now.toISOString().split('T')[0];
-        const horaAtual = String(now.getHours()).padStart(2, '0');
-        const minutoAtual = String(now.getMinutes()).padStart(2, '0');
-
-        console.log(`📅 Data: ${dataHoje}`);
-        console.log(`🕐 Hora: ${horaAtual}:${minutoAtual}\n`);
-
-        // Buscar campanhas ativas
-        const todasCampanhas = await buscarTodasCampanhas();
-        const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-        
-        console.log(`🎯 ${campanhasAtivas.length} campanhas ativas\n`);
-
-        if (campanhasAtivas.length === 0) {
-            return new Response(JSON.stringify({
-                status: "erro",
-                message: "Nenhuma campanha ativa",
-                timestamp: new Date().toISOString()
-            }), {
-                status: 400,
-                headers: { "Content-Type": "application/json" }
-            });
-        }
-
-        // Buscar inserções
-        const resultado = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
-        const insercoesRecentes = resultado.insercoesRecentes || [];
-        const todasInsercoes = resultado.todasInsercoes || [];
-
-        console.log(`✅ Inserções encontradas: ${insercoesRecentes.length} recentes, ${todasInsercoes.length} total\n`);
-
-        // Salvar no cache
-        if (env.DASHBOARD_KV) {
-            try {
-                await env.DASHBOARD_KV.put(
-                    `insercoes-cache-${dataHoje}`,
-                    JSON.stringify({
-                        todasInsercoes,
-                        insercoesRecentes,
-                        timestamp: Date.now(),
-                        dataHoje,
-                        horaAtual,
-                        minutoAtual
-                    }),
-                    { expirationTtl: 600 } // 10 minutos
-                );
-                console.log(`💾 ✅ Inserções salvas no cache com validade de 10 minutos\n`);
-            } catch (error) {
-                console.log(`⚠️ Erro ao salvar cache: ${error.message}\n`);
-            }
-        }
-
-        return new Response(JSON.stringify({
-            status: "ok",
-            message: "Scheduled worker executado com sucesso",
-            dados: {
-                campanhasAtivas: campanhasAtivas.length,
-                insercoesRecentes: insercoesRecentes.length,
-                todasInsercoes: todasInsercoes.length
-            },
-            timestamp: new Date().toISOString()
-        }), {
-            headers: { "Content-Type": "application/json" }
-        });
-
-    } catch (error) {
-        console.error(`❌ ERRO em handleRunScheduled: ${error.message}`);
-        console.error(`Stack: ${error.stack}\n`);
-
-        return new Response(JSON.stringify({
-            status: "erro",
-            message: error.message,
-            stack: error.stack.substring(0, 500),
-            timestamp: new Date().toISOString()
-        }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
-    }
-}
-
 // ===== ENDPOINT: Dashboard Completo =====
 async function handleDashboard(env, corsHeaders) {
     try {
@@ -247,37 +117,61 @@ async function handleDashboard(env, corsHeaders) {
 
         console.log(`⏰ HORÁRIO BRASÍLIA: ${dataHoje} ${horaAtual}:${minutoAtual}`);
 
-        // 🔄 SISTEMA DE CACHE INTELIGENTE - SEM BUSCAR INSERÇÕES
-        // Inserções são carregadas pelo Scheduled Worker a cada 5 minutos
+        // 🔄 SISTEMA DE CACHE INTELIGENTE
+        // SEMPRE buscar: Inserções (5 em 5 segundos)
+        // Cache por 24h: Campanhas, Emissoras Programadas, Top Emissoras, Top Cidades
         
         let todasCampanhas, campanhasAtivas, emissorasProgramadas;
         let cacheStatus = "FRESH";
 
-    // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache) - SUPER RÁPIDO
+    // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache)
     if (env.DASHBOARD_KV) {
         try {
             const cacheDadosEstaticos = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
             
             if (cacheDadosEstaticos) {
-                // ✅ Cache válido - carregar dados
+                // ✅ Cache válido - usar dados em memória
                 const parsed = JSON.parse(cacheDadosEstaticos);
                 todasCampanhas = parsed.todasCampanhas;
                 campanhasAtivas = parsed.campanhasAtivas;
                 emissorasProgramadas = parsed.emissorasProgramadas;
                 cacheStatus = "FROM_24H_CACHE";
-                console.log(`✅ Dados estáticos carregados`);
+                console.log(`✅ Dados estáticos carregados do CACHE DE 24H`);
             } else {
-                // ❌ Cache expirado - retornar vazio
-                console.log(`⏳ Cache de 24h expirado`);
-                return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
+                // ❌ Cache expirado ou não existe - buscar dados frescos
+                console.log(`⏳ Cache de 24h expirado ou não existe - BUSCANDO DADOS FRESCOS...`);
+                todasCampanhas = await buscarTodasCampanhas();
+                campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
+                emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
+                
+                // Salvar no cache
+                await env.DASHBOARD_KV.put(
+                    `dados-estaticos-${dataHoje}`,
+                    JSON.stringify({
+                        todasCampanhas,
+                        campanhasAtivas,
+                        emissorasProgramadas,
+                        salvoEm: new Date().toISOString()
+                    }),
+                    { expirationTtl: 86400 } // 24 horas
+                );
+                console.log(`💾 Dados estáticos SALVOS no cache de 24h`);
+                cacheStatus = "FRESH_FETCH";
             }
         } catch (cacheError) {
-            console.warn(`⚠️ Erro ao acessar cache: ${cacheError.message}`);
-            return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
+            console.warn(`⚠️ Erro ao acessar cache: ${cacheError.message} - usando dados frescos`);
+            todasCampanhas = await buscarTodasCampanhas();
+            campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
+            emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
+            cacheStatus = "ERROR_FALLBACK";
         }
     } else {
-        // KV não configurado - retornar vazio
-        return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
+        // KV não configurado - usar dados frescos
+        console.log(`⚠️ KV não configurado - usando dados frescos sem cache`);
+        todasCampanhas = await buscarTodasCampanhas();
+        campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
+        emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, null);
+        cacheStatus = "NO_KV";
     }
 
     if (campanhasAtivas.length === 0) {
@@ -287,41 +181,32 @@ async function handleDashboard(env, corsHeaders) {
     console.log(`🎯 ${campanhasAtivas.length} campanhas ativas`);
     console.log(`📻 ${emissorasProgramadas.length} emissoras programadas`);
 
-    // 2️⃣ CARREGAR INSERÇÕES DO CACHE (carregado pelo Scheduled Worker)
-    let insercoesRecentes = [];
-    let todasInsercoes = [];
-    
-    try {
-        const insercoesCacheRaw = await env.DASHBOARD_KV.get(`insercoes-cache-${dataHoje}`);
-        
-        if (insercoesCacheRaw) {
-            const insercoesCacheData = JSON.parse(insercoesCacheRaw);
-            insercoesRecentes = insercoesCacheData.insercoesRecentes || [];
-            todasInsercoes = insercoesCacheData.todasInsercoes || [];
-            console.log(`✅ Inserções carregadas do cache: ${insercoesRecentes.length} recentes, ${todasInsercoes.length} total`);
-        } else {
-            console.warn(`⚠️ Cache de inserções não encontrado - Scheduled Worker ainda não rodou`);
-            // Continuar mesmo sem inserções
-        }
-    } catch (error) {
-        console.warn(`⚠️ Erro ao carregar inserções do cache: ${error.message}`);
-    }
+    // 2️⃣ BUSCAR INSERÇÕES (SEMPRE FRESCO - 5 em 5 segundos)
+    const { insercoesRecentes, todasInsercoes } = await buscarInsercoes(
+        campanhasAtivas,
+        dataHoje,
+        horaNum,
+        minutoNum
+    );
 
-    // 3️⃣ PROCESSAR COORDENADAS (somente se tiver inserções)
-    let coordenadas = [];
+    console.log(`📻 ${insercoesRecentes.length} inserções recentes até ${horaAtual}:${minutoAtual}`);
+
+    // Mostrar as 5 mais recentes para debug
     if (insercoesRecentes.length > 0) {
-        try {
-            coordenadas = await processarCoordenadas(
-                insercoesRecentes,
-                env.DASHBOARD_KV,
-                dataHoje
-            );
-        } catch (error) {
-            console.warn(`⚠️ Erro ao processar coordenadas: ${error.message}`);
-        }
+        console.log(`🕐 5 INSERÇÕES MAIS RECENTES:`);
+        insercoesRecentes.slice(0, 5).forEach((ins, i) => {
+            console.log(`   ${i+1}. ${ins.hour} - ${ins.stationName} - ${ins.city}`);
+        });
     }
 
-    // 4️⃣ CALCULAR MÉTRICAS
+    // 3️⃣ PROCESSAR COORDENADAS (SEMPRE FRESCO - depende das inserções)
+    const coordenadas = await processarCoordenadas(
+        insercoesRecentes,
+        env.DASHBOARD_KV,
+        dataHoje
+    );
+
+    // 4️⃣ CALCULAR MÉTRICAS (usa cache de 24h para Top Emissoras/Cidades)
     const metricas = calcularMetricas(
         insercoesRecentes,
         campanhasAtivas,

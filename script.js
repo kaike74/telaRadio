@@ -121,15 +121,14 @@ const CONFIG = {
 // SISTEMA DE 2 MODOS DE EXIBIÇÃO DE PINGS
 // ========================================
 // Modo 1: Ephemeral (15 minutos) - Pings desaparecem após 30s
-// Modo 2: Aggregate (20 segundos) - Pings fixos, agrupados por cidade
+// Modo 2: Aggregate (10 minutos) - Pings fixos, agrupados por cidade
 let modoAtualPings = 1; // Começa em Modo 1
 let timerAlternancia = null;
 let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
-let pausarInsercoesAnimacao = false; // Flag para pausar Modo 1 quando entra Modo 2
 
 const MODO_TEMPOS = {
-    1: 20 * 1000,       // 20 segundos para Modo 1 (Rosa)
-    2: 20 * 1000        // 20 segundos para Modo 2 (Azul)
+    1: 15 * 60 * 1000,  // 15 minutos para Modo 1
+    2: 10 * 60 * 1000   // 10 minutos para Modo 2
 };
 
 const iniciarAlternanciaModoPings = () => {
@@ -139,17 +138,11 @@ const iniciarAlternanciaModoPings = () => {
         console.log(`🔄 ALTERNÂNCIA DE MODOS: Entrando em MODO ${modoAtualPings}`);
         
         if (modoAtualPings === 2) {
-            // Entrando em Modo 2: limpar pings de Modo 1 e pausar animações
-            pausarInsercoesAnimacao = true;
-            console.log(`🚫 Pausando animações de Modo 1`);
-            limparPinasEphemeral();
-            
-            // Processar TODAS as inserções do dia por cidade
+            // Entrando em Modo 2: processar TODAS as inserções do dia por cidade
             console.log(`📍 Modo 2: Agregando TODAS as inserções do dia por cidade`);
             processarTodasInsercoesModo2(dashboardData);
         } else {
-            // Entrando em Modo 1: limpar pings agregados e retomar animações
-            pausarInsercoesAnimacao = false;
+            // Entrando em Modo 1: limpar pings agregados
             console.log(`📡 Modo 1: Voltando ao modo ephemeral (pings desaparecem após 30s)`);
             limparPingsAgregados();
         }
@@ -158,9 +151,9 @@ const iniciarAlternanciaModoPings = () => {
         timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[modoAtualPings]);
     };
     
-    // Iniciar primeira alternância (começa em Modo 1)
+    // Iniciar primeira alternância (começa em Modo 1 por 15 min)
     timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
-    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 Rosa (20seg) ↔ Modo 2 Azul (20seg) - Total: 40seg`);
+    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (10min) → Repetir`);
 };
 
 /**
@@ -186,28 +179,23 @@ const processarTodasInsercoesModo2 = async (data) => {
         insercoesPorCidade[cidade].push(insercao);
     });
 
-    console.log(`📊 Total de cidades únicas em Modo 2: ${Object.keys(insercoesPorCidade).length}`);
-
     // Para cada cidade, buscar coordenadas e criar pinga agregado UMA VEZ
     for (const [cidade, insercoes] of Object.entries(insercoesPorCidade)) {
         try {
-            console.log(`🔵 Modo 2: Processando cidade ${cidade}...`);
-            
             // Buscar coordenadas da cidade
             const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(cidade)}`);
             if (!coordResp.ok) {
-                console.warn(`⚠️ Não conseguiu coordenadas para ${cidade} (status: ${coordResp.status})`);
+                console.warn(`⚠️ Não conseguiu coordenadas para ${cidade}`);
                 continue;
             }
 
             const coordData = await coordResp.json();
             if (!coordData.sucesso || !coordData.coordenada) {
-                console.warn(`⚠️ Coordenadas inválidas para ${cidade}:`, coordData);
+                console.warn(`⚠️ Coordenadas inválidas para ${cidade}`);
                 continue;
             }
 
             const coordenada = coordData.coordenada;
-            console.log(`✅ Coordenadas encontradas: ${cidade} (lat: ${coordenada.lat}, lng: ${coordenada.lng})`);
 
             // Criar UMA animação agregada para essa cidade
             const animacao = {
@@ -238,7 +226,7 @@ const processarTodasInsercoesModo2 = async (data) => {
             // Criar o pinga (função detectará modoAtualPings === 2)
             criarPinga(animacao, container, bounds);
             
-            console.log(`✅ Pinga AZUL criado: ${cidade} (${insercoes.length} inserções)`);
+            console.log(`✅ Pinga agregado criado: ${cidade} (${insercoes.length} inserções)`);
 
         } catch (error) {
             console.error(`❌ Erro processando ${cidade}:`, error);
@@ -248,7 +236,7 @@ const processarTodasInsercoesModo2 = async (data) => {
         await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    console.log(`✅ Modo 2: Todos os pings agregados (AZUIS) criados`);
+    console.log(`✅ Modo 2: Todos os pings agregados criados`);
 };
 
 /**
@@ -272,29 +260,6 @@ const limparPingsAgregados = () => {
     pingtimeoutModo2.clear();
 
     console.log(`🧹 Pings agregados removidos`);
-};
-
-/**
- * 🧹 Limpar todos os pings ephemeral (Modo 1) ao entrar em Modo 2
- */
-const limparPinasEphemeral = () => {
-    const container = document.getElementById('animacoes-layer');
-    if (!container) return;
-
-    // Remover todos os pings que NÃO são agregados (não começam com "pinga-agregado-")
-    Array.from(container.querySelectorAll('[id^="pinga-"]')).forEach(pinga => {
-        if (!pinga.id.startsWith('pinga-agregado-')) {
-            pinga.classList.add('fade-out');
-            setTimeout(() => {
-                if (pinga.parentNode) {
-                    pinga.remove();
-                    animacoesAtivas.delete(pinga.id);
-                }
-            }, 300);
-        }
-    });
-
-    console.log(`🧹 Pings ephemeral removidos`);
 };
 
 // Estado global
@@ -515,9 +480,8 @@ let dashboardCache = null;
 let dashboardCacheTimestamp = null;
 
 async function buscarDashboardCompleto() {
-    const MAX_TENTATIVAS = 4;
-    const TIMEOUT_MS = 8000; // 8 segundos (Worker tira timeout em 5s)
-    const RETRY_DELAYS = [1000, 2000, 3000]; // 1s, 2s, 3s entre retries
+    const MAX_TENTATIVAS = 3;
+    const TIMEOUT_MS = 30000; // 30 segundos (aumentado de 15)
     
     for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa++) {
         try {
@@ -529,7 +493,7 @@ async function buscarDashboardCompleto() {
             
             try {
                 timeoutId = setTimeout(() => {
-                    console.warn(`⏱️ Timeout de ${TIMEOUT_MS}ms (${TIMEOUT_MS/1000}seg) acionado - servidor demorando`);
+                    console.warn(`⏱️ Timeout de ${TIMEOUT_MS}ms acionado`);
                     controller.abort();
                 }, TIMEOUT_MS);
 
@@ -571,8 +535,6 @@ async function buscarDashboardCompleto() {
 
         } catch (error) {
             console.warn(`⚠️ Tentativa ${tentativa} falhou:`, error.message);
-            console.warn(`   Tipo de erro:`, error.name);
-            console.warn(`   URL tentada: ${CONFIG.API_BASE}/api/dashboard`);
             
             // Se foi a última tentativa, usar cache
             if (tentativa === MAX_TENTATIVAS) {
@@ -583,16 +545,13 @@ async function buscarDashboardCompleto() {
                     return true;
                 } else {
                     console.error('❌ Erro ao buscar dashboard e sem cache disponível');
-                    console.error('   Motivo:', error.message);
                     mostrarErro('Erro de conexão - tentando reconectar...');
                     return false;
                 }
             }
             
             // Aguardar antes de tentar novamente
-            const delayMs = RETRY_DELAYS[tentativa - 1] || 5000;
-            console.log(`   ⏳ Próxima tentativa em ${delayMs/1000}s...`);
-            await aguardar(delayMs);
+            await aguardar(2000 * tentativa); // 2s, 4s, etc.
         }
     }
     
@@ -1115,12 +1074,6 @@ function atualizarAnimacoes(novasAnimacoes) {
  */
 function criarPingaDoTicker(insercao, tickerId) {
     try {
-        // ⏸️ Pausar criação de pings em Modo 1 quando entra Modo 2
-        if (pausarInsercoesAnimacao) {
-            console.log(`⏸️ Criação de pinga pausada (Modo 2 ativo)`);
-            return;
-        }
-
         // Validar dados mínimos
         if (!insercao || !insercao.city) {
             console.warn(`⚠️ Inserção sem city rejeitada (ID: ${tickerId})`);
@@ -1459,7 +1412,7 @@ function criarPinga(animacao, container, bounds) {
                 animacoesAtivas.set(pingaDaCidadeId, pinga);
             }
             
-            // Remover pinga após 20 segundos (duração do Modo 2)
+            // Remover pinga após 10 minutos (duração do Modo 2)
             const timeoutId = setTimeout(() => {
                 const pingElement = document.getElementById(`pinga-agregado-${cidade}`);
                 if (pingElement) {
