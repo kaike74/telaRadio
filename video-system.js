@@ -255,6 +255,17 @@ class VideoAutoPlaySystem {
                 console.log(`📊 [VIDEO-SYSTEM] Transição: Vídeos → DASHBOARD`);
                 this.stopVideosCycle();
                 this.currentMode = 'dashboard';
+                
+                // 🎲 NOVO: Selecionar NOVOS vídeos aleatórios para próximo ciclo
+                console.log(`🎲 [VIDEO-SYSTEM] Selecionando novos vídeos aleatórios para próximo ciclo...`);
+                const numVideosNecessarios = Math.ceil(VIDEO_CONFIG.VIDEO_CYCLE_DURATION / VIDEO_CONFIG.SINGLE_VIDEO_DURATION);
+                this.nextCycleSongs = this.getRandomVideos(numVideosNecessarios);
+                console.log(`📋 Próximo ciclo: ${this.nextCycleSongs.length} vídeos novos selecionados`);
+                
+                // 🎲 NOVO: Começar a pré-carregar os novos vídeos
+                this.preloadProgress = 0;
+                this.startPreloadingVideos(this.nextCycleSongs);
+                
                 this.scheduleNextTransition();
             }
         }, duracao);
@@ -272,13 +283,15 @@ class VideoAutoPlaySystem {
             clearInterval(this.dashboardCheckInterval);
         }
         
-        // Usar os vídeos que foram pré-carregados
-        this.currentCycleSongs = this.nextCycleSongs;
+        // Usar os vídeos que foram pré-carregados e embaralhá-los para ordem aleatória
+        this.currentCycleSongs = [...this.nextCycleSongs].sort(() => Math.random() - 0.5);
         
         if (this.currentCycleSongs.length === 0) {
             console.warn(`⚠️  Nenhum vídeo disponível`);
             return;
         }
+        
+        console.log(`🎲 [VIDEO-SYSTEM] Vídeos embaralhados para reprodução aleatória`);
         
         this.currentVideoIndex = 0;
         this.currentMode = 'videos';
