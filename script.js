@@ -127,8 +127,8 @@ let timerAlternancia = null;
 let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
 
 const MODO_TEMPOS = {
-    1: 15 * 60 * 1000,  // 15 minutos para Modo 1
-    2: 10 * 60 * 1000   // 10 minutos para Modo 2
+    1: 60 * 1000,  // 60 segundos para Modo 1 (Rosa)
+    2: 45 * 1000   // 45 segundos para Modo 2 (Azul)
 };
 
 const iniciarAlternanciaModoPings = () => {
@@ -151,9 +151,9 @@ const iniciarAlternanciaModoPings = () => {
         timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[modoAtualPings]);
     };
     
-    // Iniciar primeira alternância (começa em Modo 1 por 15 min)
+    // Iniciar primeira alternância (começa em Modo 1 por 60s)
     timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
-    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (15min) → Modo 2 (10min) → Repetir`);
+    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (60s) → Modo 2 (45s) → Repetir`);
 };
 
 /**
@@ -339,8 +339,8 @@ async function iniciarCicloAtualizacao() {
  */
 async function cicloAtualizacaoRecorrente() {
     try {
-        // ⏱️ Intervalo: 5 segundos (inserções recentes)
-        await aguardar(5000);
+        // ⏱️ Intervalo: 12 segundos (inserções recentes) - Reduz carga em 60%
+        await aguardar(12000);
         
         // 📊 Buscar inserções recentes (buscar dados apenas, não renderizar)
         const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/recentes`);
