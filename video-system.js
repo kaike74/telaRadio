@@ -369,13 +369,17 @@ class VideoAutoPlaySystem {
         // Verificar se ainda há tempo para mais vídeos
         const tempoRestante = this.videoCycleEndTime - Date.now();
         
-        if (this.currentVideoIndex < this.currentCycleSongs.length && tempoRestante > 0) {
-            console.log(`📊 Próximo vídeo em ${tempoRestante/1000}s`);
-            this.playVideo(this.currentCycleSongs[this.currentVideoIndex]);
-        } else {
-            console.log(`✅ Ciclo de vídeos finalizado`);
-            // Deixar o setTimeout principal fazer a transição
+        // Se o tempo acabou ou não há mais vídeos, aguardar a transição automática
+        if (this.currentVideoIndex >= this.currentCycleSongs.length || tempoRestante <= 0) {
+            console.log(`✅ Fim da ciclo de vídeos (${this.currentVideoIndex}/${this.currentCycleSongs.length} vídeos, ${tempoRestante/1000}s restantes)`);
+            // Aguardar o cycleTimer fazer a transição automaticamente
+            if (this.primaryVideo) this.primaryVideo.pause();
+            if (this.preloadVideo) this.preloadVideo.pause();
+            return;
         }
+        
+        console.log(`📊 Próximo vídeo em ${tempoRestante/1000}s`);
+        this.playVideo(this.currentCycleSongs[this.currentVideoIndex]);
     }
 
     /**
@@ -385,6 +389,35 @@ class VideoAutoPlaySystem {
         if (this.currentMode !== 'videos') return;
         
         const tempoRestante = this.videoCycleEndTime - Date.now();
+        
+        // Se o tempo acabou, forçar transição para dashboard
+        if (tempoRestante <= 0) {
+            console.log(`⏰ [VIDEO-SYSTEM] ⏹️ TEMPO DE CICLO EXPIRADO - Forçando transição para Dashboard`);
+            if (this.videoCheckInterval) {
+                clearInterval(this.videoCheckInterval);
+            }
+            
+            // Parar vídeos
+            if (this.primaryVideo) this.primaryVideo.pause();
+            if (this.preloadVideo) this.preloadVideo.pause();
+            
+            // Ocultar overlay
+            const overlay = document.getElementById('video-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('show');
+            }
+            
+            // Voltar para Dashboard
+            this.currentMode = 'dashboard';
+            this.currentCycleSongs = [];
+            this.currentVideoIndex = 0;
+            
+            // Agendar próxima transição
+            this.scheduleNextTransition();
+            return;
+        }
+        
         const minutos = Math.floor(tempoRestante / 60000);
         const segundos = Math.floor((tempoRestante % 60000) / 1000);
         const formatado = `${minutos}:${segundos.toString().padStart(2, '0')}`;
