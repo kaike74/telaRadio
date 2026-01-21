@@ -284,8 +284,14 @@ class VideoAutoPlaySystem {
             clearInterval(this.dashboardCheckInterval);
         }
         
-        // Usar os vídeos que foram pré-carregados e embaralhá-los para ordem aleatória
-        this.currentCycleSongs = [...this.nextCycleSongs].sort(() => Math.random() - 0.5);
+        // Usar os vídeos que foram pré-carregados e embaralhá-los com Fisher-Yates
+        this.currentCycleSongs = [...this.nextCycleSongs];
+        
+        // Fisher-Yates shuffle (melhor que sort random)
+        for (let i = this.currentCycleSongs.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.currentCycleSongs[i], this.currentCycleSongs[j]] = [this.currentCycleSongs[j], this.currentCycleSongs[i]];
+        }
         
         if (this.currentCycleSongs.length === 0) {
             console.warn(`⚠️  Nenhum vídeo disponível`);
@@ -293,6 +299,8 @@ class VideoAutoPlaySystem {
         }
         
         console.log(`🎲 [VIDEO-SYSTEM] Vídeos embaralhados para reprodução aleatória`);
+        const nomeVideos = this.currentCycleSongs.map((v, i) => `${i+1}. ${v.nome}`).join(', ');
+        console.log(`📋 Ordem de reprodução: ${nomeVideos}`);
         
         this.currentVideoIndex = 0;
         this.currentMode = 'videos';
@@ -355,8 +363,11 @@ class VideoAutoPlaySystem {
      * Fisher-Yates shuffle com histórico de vídeos usados
      */
     getRandomVideos(count) {
+        console.log(`🎲 [VIDEO-SYSTEM] getRandomVideos() chamado: count=${count}, total de vídeos=${this.videos.length}`);
+        
         // Filtrar vídeos que NÃO foram usados recentemente (últimos 20 vídeos)
         const videosDisponiveis = this.videos.filter(v => !this.lastUsedVideos.includes(v.id));
+        console.log(`🎲 [VIDEO-SYSTEM] Vídeos disponíveis (não usados recentemente): ${videosDisponiveis.length}`);
         
         // Se não há vídeos novos, limpar histórico e usar todos
         if (videosDisponiveis.length < count) {
@@ -366,14 +377,21 @@ class VideoAutoPlaySystem {
         
         // Fisher-Yates shuffle (melhor que sort random)
         const pool = videosDisponiveis.length > 0 ? [...videosDisponiveis] : [...this.videos];
+        console.log(`🎲 [VIDEO-SYSTEM] Pool antes do shuffle: ${pool.length} vídeos`);
+        
         for (let i = pool.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [pool[i], pool[j]] = [pool[j], pool[i]];
         }
         
+        console.log(`🎲 [VIDEO-SYSTEM] Pool após shuffle: ${pool.length} vídeos`);
+        
         const selecionados = pool.slice(0, count);
         
         // Guardar IDs dos vídeos usados no histórico
+        const idsParaExibir = selecionados.map(v => `${v.id}:${v.nome}`).join(', ');
+        console.log(`🎲 [VIDEO-SYSTEM] Vídeos selecionados: ${idsParaExibir}`);
+        
         selecionados.forEach(v => {
             this.lastUsedVideos.push(v.id);
             // Limitar histórico a 20 últimos vídeos
