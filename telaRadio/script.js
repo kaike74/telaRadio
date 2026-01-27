@@ -120,135 +120,148 @@ const CONFIG = {
 };
 
 // ========================================
-// SISTEMA MESCLADO DE PINGS AZUIS + ROSA
+// SISTEMA DE 2 MODOS DE EXIBIÇÃO DE PINGS
 // ========================================
-// 🔵 Pings AZUIS: TODAS as inserções do dia, permanentes (100% do tempo)
-// 🔴 Pings ROSA: Notificações em tempo real, sobrepõem os azuis por 30s, depois desaparecem
+// Modo 1: Ephemeral (15 minutos) - Pings desaparecem após 30s
+// Modo 2: Aggregate (10 minutos) - Pings fixos, agrupados por cidade
+let modoAtualPings = 1; // Começa em Modo 1
+let timerAlternancia = null;
+let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
 
-let pingsPermanentes = new Map(); // Rastrear pings azuis permanentes
-let timerCarregamentoPingsPermanentes = null;
+const MODO_TEMPOS = {
+    1: 60 * 1000,  // 60 segundos para Modo 1 (Rosa)
+    2: 45 * 1000   // 45 segundos para Modo 2 (Azul)
+};
+
+const iniciarAlternanciaModoPings = () => {
+    const alternarModo = () => {
+        const modoAnterior = modoAtualPings;
+        modoAtualPings = modoAtualPings === 1 ? 2 : 1;
+        console.log(`🔄 ALTERNÂNCIA DE MODOS: Entrando em MODO ${modoAtualPings}`);
+        
+        if (modoAtualPings === 2) {
+            // Entrando em Modo 2: processar TODAS as inserções do dia por cidade
+            console.log(`� Modo 2: Agregando TODAS as inserções do dia por cidade`);
+            processarTodasInsercoesModo2(dashboardData);
+        } else {
+            // Entrando em Modo 1: limpar pings agregados
+            console.log(`📡 Modo 1: Voltando ao modo ephemeral (pings desaparecem após 30s)`);
+            limparPingsAgregados();
+        }
+        
+        // Agendar próxima alternância
+        timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[modoAtualPings]);
+    };
+    
+    // Iniciar primeira alternância (começa em Modo 1 por 60s)
+    timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
+    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (60s) → Modo 2 (45s) → Repetir`);
+};
 
 /**
- * 🔵 Carregar TODAS as inserções do dia como pings AZUIS permanentes
- * Executado uma vez ao iniciar e depois a cada atualização do dashboard
+ * 🎯 MODO 2: Processa TODAS as inserções do dia e agrupa por cidade
+ * Cria um pinga agregado para cada cidade com contador
  */
-const carregarPingsPermanentes = async (data) => {
-    if (!data || !data.insercoesRecentes || data.insercoesRecentes.length === 0) {
-        console.warn('⚠️ Sem dados de inserções para criar pings permanentes');
+const processarTodasInsercoesModo2 = async (data) => {
+    if (!data || !data.insercoesRecentes) {
+        console.warn('⚠️ Sem dados de inserções para processar em Modo 2');
         return;
     }
 
-    console.log(`🔵 Carregando ${data.insercoesRecentes.length} pings AZUIS permanentes...`);
+    console.log(`🔄 Processando ${data.insercoesRecentes.length} inserções em Modo 2...`);
 
-    const container = document.getElementById('animacoes-layer');
-    const mapaContainer = document.getElementById('mapa-container');
+    // Agrupar inserções por cidade
+    const insercoesPorCidade = {};
     
-    if (!container || !mapaContainer) {
-        console.error(`❌ Containers do mapa não encontrados`);
-        return;
-    }
+    data.insercoesRecentes.forEach(insercao => {
+        const cidade = insercao.city || 'Desconhecida';
+        if (!insercoesPorCidade[cidade]) {
+            insercoesPorCidade[cidade] = [];
+        }
+        insercoesPorCidade[cidade].push(insercao);
+    });
 
-    const bounds = mapaContainer.getBoundingClientRect();
-    let criados = 0;
-    let jaExistentes = 0;
-
-    // Processar cada inserção do dia
-    for (const insercao of data.insercoesRecentes) {
+    // Para cada cidade, buscar coordenadas e criar pinga agregado UMA VEZ
+    for (const [cidade, insercoes] of Object.entries(insercoesPorCidade)) {
         try {
-            // ID único para cada inserção (identificador permanente do dia)
-            const pingaId = `pinga-azul-${insercao.stationName}-${insercao.city}-${insercao.hour}`;
-            
-            // Verificar se esse pinga azul já existe
-            if (pingsPermanentes.has(pingaId)) {
-                jaExistentes++;
-                continue;
-            }
-
             // Buscar coordenadas da cidade
-            const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(insercao.city)}`);
-            
+            const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(cidade)}`);
             if (!coordResp.ok) {
-                console.warn(`⚠️ Não conseguiu coordenadas para ${insercao.city}`);
+                console.warn(`⚠️ Não conseguiu coordenadas para ${cidade}`);
                 continue;
             }
 
             const coordData = await coordResp.json();
             if (!coordData.sucesso || !coordData.coordenada) {
-                console.warn(`⚠️ Coordenadas inválidas para ${insercao.city}`);
+                console.warn(`⚠️ Coordenadas inválidas para ${cidade}`);
                 continue;
             }
 
             const coordenada = coordData.coordenada;
-            const horarioFormatado = insercao.hour ? insercao.hour.substring(0, 5) : 'N/A';
 
-            // Criar pinga AZUL permanente
+            // Criar UMA animação agregada para essa cidade
             const animacao = {
-                id: pingaId,
+                id: `pinga-agregado-${cidade}`,
                 lat: parseFloat(coordenada.lat),
                 lng: parseFloat(coordenada.lng),
                 dados: {
-                    emissora: insercao.stationName || 'N/A',
-                    cidade: insercao.city || 'N/A',
-                    uf: insercao.uf || 'N/A',
-                    cliente: insercao.client || 'N/A',
-                    horario: horarioFormatado,
-                    campanha: insercao.campaign || 'N/A'
+                    emissora: 'Agregado',
+                    cidade: cidade,
+                    uf: insercoes[0].uf || 'N/A',
+                    cliente: 'N/A',
+                    horario: 'N/A',
+                    campanha: `${insercoes.length} inserções`
                 },
-                origem: 'pinga-azul-permanente',
-                tipo: 'azul'  // Marca como pinga azul
+                origem: 'modo2-agregado'
             };
 
-            // Criar o pinga
-            criarPinga(animacao, container, bounds);
-            pingsPermanentes.set(pingaId, animacao);
-            
-            // 🔵 NOVO: Guardar dados completos para RESTAURAÇÃO em caso de desaparecimento
-            pingsPermanentesCompletos.set(pingaId, animacao);
-            
-            criados++;
-
-            // Pequeno delay entre requisições para não sobrecarregar
-            await new Promise(resolve => setTimeout(resolve, 50));
-
-        } catch (error) {
-            console.error(`❌ Erro criando pinga permanente:`, error);
-        }
-    }
-
-    console.log(`✅ Pings permanentes carregados: ${criados} criados, ${jaExistentes} já existentes, Total: ${pingsPermanentes.size}`);
-};
-
-// 🔴 RESTAURAÇÃO CONTÍNUA: Verificar e restaurar pings azuis que sumiram do DOM
-const iniciarMonitorPingsAzuis = () => {
-    setInterval(() => {
-        try {
             const container = document.getElementById('animacoes-layer');
-            if (!container) return;
-            
             const mapaContainer = document.getElementById('mapa-container');
-            if (!mapaContainer) return;
             
-            let restaurados = 0;
+            if (!container || !mapaContainer) {
+                console.error(`❌ Containers do mapa não encontrados`);
+                continue;
+            }
+
             const bounds = mapaContainer.getBoundingClientRect();
             
-            // Verificar cada pinga permanente
-            for (const [pingaId, animacao] of pingsPermanentesCompletos.entries()) {
-                // ⚠️ CRÍTICO: Se o pinga DEVERIA estar aqui mas não está no DOM, RESTAURAR
-                const pingNoDOM = document.getElementById(pingaId);
-                if (!pingNoDOM) {
-                    console.warn(`🔴 ALERTA: Pinga azul desapareceu do DOM! Restaurando... ${pingaId}`);
-                    criarPinga(animacao, container, bounds);
-                    restaurados++;
-                }
-            }
+            // Criar o pinga (função detectará modoAtualPings === 2)
+            criarPinga(animacao, container, bounds);
             
-            if (restaurados > 0) {
-                console.log(`🔵 ✅ ${restaurados} pings AZUIS restaurados (desapareciam do DOM)`);
-            }
+            console.log(`✅ Pinga agregado criado: ${cidade} (${insercoes.length} inserções)`);
+
         } catch (error) {
-            console.error(`❌ Erro ao monitorar pings azuis:`, error);
+            console.error(`❌ Erro processando ${cidade}:`, error);
         }
-    }, 5000); // Verificar a cada 5 segundos
+
+        // Pequeno delay entre requisições
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log(`✅ Modo 2: Todos os pings agregados criados`);
+};
+
+/**
+ * 🧹 Limpar todos os pings agregados ao sair do Modo 2
+ */
+const limparPingsAgregados = () => {
+    const container = document.getElementById('animacoes-layer');
+    if (!container) return;
+
+    // Remover todos os pings com ID começando em "pinga-agregado-"
+    Array.from(container.querySelectorAll('[id^="pinga-agregado-"]')).forEach(pinga => {
+        pinga.classList.add('fade-out');
+        setTimeout(() => {
+            pinga.remove();
+            animacoesAtivas.delete(pinga.id);
+        }, 800);
+    });
+
+    // Limpar timeouts de Modo 2
+    pingtimeoutModo2.forEach(timeoutId => clearTimeout(timeoutId));
+    pingtimeoutModo2.clear();
+
+    console.log(`🧹 Pings agregados removidos`);
 };
 
 // Estado global
@@ -260,10 +273,7 @@ let mapaViewBox = { width: 1000, height: 1000 };
 // ⭐ NOVO: Rastrear inserções já vistas para criar pingas apenas das novas
 let insercoesPreviasIds = new Set(); // Set com IDs das inserções da atualização anterior
 
-// 🔵 PROTEÇÃO: Mapa com dados completos dos pings azuis para RESTAURAR se sumirem do DOM
-let pingsPermanentesCompletos = new Map(); // {pingaId => {animacao data + coordenadas}}
-
-// 🔧 DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
+//  DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
 // ⚠️ GARANTIA DE MONOTONICICIDADE: Os valores NUNCA diminuem
 let metricasAnteriores = {
     campanhasAtivas: null,
@@ -394,9 +404,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // ⭐ NOVO: Iniciar limpeza periódica de memória (a cada 30 minutos)
     iniciarLimpezaPeriodica();
 
-    // 🔵 NOVO: Iniciar monitor contínuo de pings azuis (restauração automática)
-    iniciarMonitorPingsAzuis();
-
     // 🎬 NOVO: Sistema de vídeos em background (auto-inicializa)
     console.log('🎬 Sistema de auto-play carregado. Vídeos rodando em background...');
 
@@ -484,26 +491,14 @@ function iniciarLimpezaPeriodica() {
         // 7️⃣ Verificar pings orfãos (no mapa mas não em animacoesAtivas)
         const pingas = document.querySelectorAll('.pinga');
         let orfaos = 0;
-        let azuisEncontrados = 0;
         pingas.forEach(pinga => {
-            // Proteger pings azuis - nunca remover!
-            if (pinga.classList.contains('pinga-azul')) {
-                azuisEncontrados++;
-                // Se o pinga azul não está em animacoesAtivas, adicionar de volta
-                if (!animacoesAtivas.has(pinga.id)) {
-                    console.warn(`   🔵 PROTEÇÃO: Pinga azul orfão encontrado e recuperado: ${pinga.id}`);
-                    animacoesAtivas.set(pinga.id, pinga);
-                }
-            } else if (!animacoesAtivas.has(pinga.id)) {
-                console.warn(`   ⚠️ Pinga rosa orfão encontrado: ${pinga.id}`);
+            if (!animacoesAtivas.has(pinga.id)) {
+                console.warn(`   ⚠️ Pinga orfão encontrado: ${pinga.id}`);
                 orfaos++;
             }
         });
-        if (azuisEncontrados > 0) {
-            console.log(`   🔵 ${azuisEncontrados} pings AZUIS verificados (todos protegidos)`);
-        }
         if (orfaos > 0) {
-            console.log(`   🗑️ Pingas rosas orfãos encontrados: ${orfaos}`);
+            console.log(`   🗑️ Pingas orfãos encontrados: ${orfaos}`);
         }
         
         console.log(`%c✅ LIMPEZA CONCLUÍDA - Memória otimizada`, 'color: #4caf50; font-weight: bold; font-size: 12px;');
@@ -514,7 +509,6 @@ function iniciarLimpezaPeriodica() {
             campanhasDetectadas: campanhasDetectadas.size,
             campanhasDataDeteccao: campanhasDataDeteccao.size,
             milestoneCampanhas: milesmoneCampanhas.size,
-            pingsAzuisPermanentes: pingsPermanentes.size,
             animacoesAtivas: animacoesAtivas.size,
             totalMemEmUso: (performance.memory?.usedJSHeapSize / 1048576).toFixed(2) + ' MB'
         });
@@ -586,11 +580,14 @@ async function cicloAtualizacaoRecorrente() {
         
         if (agora - window._ultimaAtualizacaoCompleta >= 90000) {
             try {
-                // 🔵 IMPORTANTE: Buscar dashboard completo (não apenas métricas)
-                // Isso garante que os pings AZUIS PERMANENTES sejam recarregados
-                // e nunca desapareçam da tela
-                console.log(`🔄 Atualizando dashboard completo + pings permanentes...`);
-                await buscarDashboardCompleto();
+                const fullResponse = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
+                if (fullResponse.ok) {
+                    const fullData = await fullResponse.json();
+                    if (fullData.success) {
+                        // Atualizar apenas as 5 métricas (com proteção de monotonicity)
+                        atualizarApenasMetricas();
+                    }
+                }
             } catch (erro) {
                 console.error('❌ Erro ao atualizar dashboard completo:', erro);
             }
@@ -728,8 +725,6 @@ async function buscarDashboardCompleto() {
                         console.log(`   Debug:`, data.debug);
                     }
                     renderizarDashboard(data);
-                    // 🔵 Carregar pings azuis permanentes (todas as inserções do dia)
-                    carregarPingsPermanentes(data);
                     return true;
                 } else {
                     console.error('❌ Erro nos dados:', data.error);
@@ -748,8 +743,6 @@ async function buscarDashboardCompleto() {
                     console.log(`%c💾 Usando cache local do dashboard (${Math.round((Date.now() - dashboardCacheTimestamp) / 1000)}s atrás)`, 'color: #ff9800; font-weight: bold;');
                     dashboardData = dashboardCache;
                     renderizarDashboard(dashboardCache);
-                    // 🔵 Carregar pings azuis permanentes do cache
-                    carregarPingsPermanentes(dashboardCache);
                     return true;
                 } else {
                     console.error('❌ Erro ao buscar dashboard e sem cache disponível');
@@ -819,7 +812,7 @@ function renderizarGraficoEmissoras(topEmissoras) {
 
     console.log(`📊 renderizarGraficoEmissoras() recebeu ${topEmissoras.length} emissoras:`);
     topEmissoras.slice(0, 5).forEach((e, i) => {
-        console.log(`   [${i}] ${e.cidade}/${e.uf} - ${e.emissora} - campanhas: ${e.numerosCampanhasAtivas}`);
+        console.log(`   [${i}] ${e.emissora} - campanhas: ${e.numerosCampanhasAtivas}`);
     });
 
     // Usar "numerosCampanhasAtivas" como valor principal
@@ -828,13 +821,11 @@ function renderizarGraficoEmissoras(topEmissoras) {
     const graficoHTML = topEmissoras.slice(0, 8).map(emissora => {
         const valor = emissora.numerosCampanhasAtivas || 0;
         const larguraPercentual = (valor / maxValor) * 100;
-        // 🔵 NOVO: Incluir cidade na exibição
-        const labelCompleto = `${emissora.cidade || 'N/A'}/${emissora.uf || 'N/A'} - ${emissora.emissora}`;
-        const nomeResumido = truncarTexto(labelCompleto, 50);
+        const nomeResumido = truncarTexto(emissora.emissora, 40);
 
         return `
             <div class="grafico-barra">
-                <div class="grafico-label" title="${labelCompleto}">${nomeResumido}</div>
+                <div class="grafico-label" title="${emissora.emissora}">${nomeResumido}</div>
                 <div class="grafico-bar-container">
                     <div class="grafico-bar" style="width: ${larguraPercentual}%">
                         <span class="grafico-valor">${valor}</span>
@@ -1270,19 +1261,16 @@ async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
 function criarPinga(animacao, container, bounds) {
     try {
         const pinga = document.createElement('div');
-        
-        // Determinar tipo: AZUL permanente ou ROSA temporário
-        const ehPingaAzul = animacao.tipo === 'azul' || animacao.origem === 'pinga-azul-permanente';
-        pinga.className = ehPingaAzul ? 'pinga pinga-azul' : 'pinga pinga-rosa';
+        pinga.className = modoAtualPings === 2 ? 'pinga pinga-modo-2' : 'pinga';
         pinga.id = animacao.id;
 
         // Converter coordenadas geográficas para pixels do SVG
         const pos = coordenadasParaPixels(animacao.lat, animacao.lng);
         
         if (CONFIG.VERBOSE_LOGS) {
-            console.group(`%c🔴 CRIANDO PING ${ehPingaAzul ? '(AZUL)' : '(ROSA)'} - DETALHADO`, 'color: ' + (ehPingaAzul ? '#0099ff' : '#ff0088') + '; font-weight: bold;');
+            console.group(`%c🔴 CRIANDO PING - DETALHADO`, 'color: #ff0000; font-weight: bold;');
             console.log(`   ID: ${animacao.id}`);
-            console.log(`   Tipo: ${ehPingaAzul ? 'AZUL (Permanente)' : 'ROSA (Temporário)'}`);
+            console.log(`   Modo: ${modoAtualPings}`);
             console.log(`   Emissora: ${animacao.dados.emissora}`);
             console.log(`   Cidade: ${animacao.dados.cidade}/${animacao.dados.uf}`);
             console.log(`   Horário: ${animacao.dados.horario}`);
@@ -1290,68 +1278,101 @@ function criarPinga(animacao, container, bounds) {
             console.log(`   Pixels: x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}`);
             console.groupEnd();
         } else {
-            LoggerOtimizado.log(`Pinga ${ehPingaAzul ? '🔵 AZUL' : '🔴 ROSA'}: ${animacao.dados.cidade}`, 'pinga-criado');
+            LoggerOtimizado.log(`Pinga [Modo ${modoAtualPings}]: ${animacao.dados.cidade}`, 'pinga-criado');
         }
 
         pinga.style.left = `${pos.x}px`;
         pinga.style.top = `${pos.y}px`;
-        pinga.style.zIndex = ehPingaAzul ? '10' : '100';  // Rosa fica por cima do azul
+        pinga.style.zIndex = '100';
         pinga.style.position = 'absolute';
 
         // ========================================
-        // 🔵 PINGA AZUL: Permanente, SEM rótulo
+        // MODO 1: Ephemeral (com horário, emissora e cidade)
         // ========================================
-        if (ehPingaAzul) {
-            pinga.innerHTML = `
-                <div class="pinga-circle"></div>
-                <div class="pinga-ripple"></div>
-            `;
-            
-            container.appendChild(pinga);
-            animacoesAtivas.set(animacao.id, pinga);
-            
-            // Pinga azul é PERMANENTE - não desaparece
-            console.log(`   ✅ Pinga azul criado e será permanente`);
-        }
-        // ========================================
-        // 🔴 PINGA ROSA: Temporário (30s), COM rótulo, sobrepõe azul
-        // ========================================
-        else {
+        if (modoAtualPings === 1) {
             const emissora = animacao.dados.emissora.split('(')[0].trim();
             pinga.innerHTML = `
-                <div class="pinga-circle"></div>
-                <div class="pinga-ripple"></div>
-                <div class="label-permanente">
-                    <div class="label-content">
-                        <div class="label-horario">${animacao.dados.horario}</div>
-                        <div class="label-emissora">${emissora}</div>
-                        <div class="label-cidade">${animacao.dados.cidade}</div>
-                    </div>
+            <div class="pinga-circle"></div>
+            <div class="pinga-ripple"></div>
+            <div class="label-permanente">
+                <div class="label-content">
+                    <div class="label-horario">${animacao.dados.horario}</div>
+                    <div class="label-emissora">${emissora}</div>
+                    <div class="label-cidade">${animacao.dados.cidade}</div>
                 </div>
-            `;
-
+            </div>
+        `;
+            
             container.appendChild(pinga);
             animacoesAtivas.set(animacao.id, pinga);
-
-            // ⭐ NOVO: Timeout para remover pinga rosa após 30 segundos
-            const DURACAO_PINGA_MS = 30000;      // 30 segundos visível
-            const DURACAO_FADEOUT_MS = 800;      // 800ms para animação de desaparecimento
-
-            setTimeout(() => {
-                const pingElement = document.getElementById(animacao.id);
+            
+            // Remover pinga após 30s com fadeout (Modo 1)
+            const DURACAO_PINGA_MS = 30000;
+            const DURACAO_FADEOUT_MS = 800;
+            
+            if (animacao.id !== 'ping-teste-brasilia') {
+                setTimeout(() => {
+                    const pingElement = document.getElementById(animacao.id);
+                    if (pingElement) {
+                        pingElement.classList.add('fade-out');
+                        setTimeout(() => {
+                            if (pingElement.parentNode) {
+                                pingElement.remove();
+                                animacoesAtivas.delete(animacao.id);
+                            }
+                        }, DURACAO_FADEOUT_MS);
+                    }
+                }, DURACAO_PINGA_MS);
+            }
+        }
+        // ========================================
+        // MODO 2: Aggregate (apenas ping sem rótulo)
+        // ========================================
+        else if (modoAtualPings === 2) {
+            const cidade = animacao.dados.cidade;
+            
+            // Verificar se já existe pinga dessa cidade
+            const pingaDaCidadeId = `pinga-agregado-${cidade}`;
+            const pingaExistente = document.getElementById(pingaDaCidadeId);
+            
+            if (pingaExistente) {
+                // Incrementar contador (armazenado como atributo, não exibido)
+                const count = parseInt(pingaExistente.dataset.count || 1) + 1;
+                pingaExistente.dataset.count = count;
+                
+                // Limpar timeout anterior se existir
+                if (pingtimeoutModo2.has(cidade)) {
+                    clearTimeout(pingtimeoutModo2.get(cidade));
+                }
+            } else {
+                // Criar novo pinga agregado (sem rótulo)
+                pinga.id = pingaDaCidadeId;
+                pinga.dataset.count = 1;
+                pinga.innerHTML = `
+                <div class="pinga-circle"></div>
+                <div class="pinga-ripple"></div>
+            `;
+                
+                container.appendChild(pinga);
+                animacoesAtivas.set(pingaDaCidadeId, pinga);
+            }
+            
+            // Remover pinga após 10 minutos (duração do Modo 2)
+            const timeoutId = setTimeout(() => {
+                const pingElement = document.getElementById(`pinga-agregado-${cidade}`);
                 if (pingElement) {
                     pingElement.classList.add('fade-out');
                     setTimeout(() => {
                         if (pingElement.parentNode) {
                             pingElement.remove();
-                            animacoesAtivas.delete(animacao.id);
-                            console.log(`   🗑️ Pinga rosa removido após 30s: ${animacao.id}`);
+                            animacoesAtivas.delete(`pinga-agregado-${cidade}`);
+                            pingtimeoutModo2.delete(cidade);
                         }
-                    }, DURACAO_FADEOUT_MS);
+                    }, 800);
                 }
-            }, DURACAO_PINGA_MS);
-
-            console.log(`   ✅ Pinga rosa criado - desaparecerá em 30s`);
+            }, MODO_TEMPOS[2]);
+            
+            pingtimeoutModo2.set(cidade, timeoutId);
         }
         
     } catch (error) {

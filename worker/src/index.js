@@ -1058,12 +1058,6 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
     
     const emissorasTopMap = new Map();
     
-    // 🔵 NOVO: Criar mapa rápido das emissoras programadas para buscar cidade/UF
-    const emissorasProgramadasMap = new Map();
-    emissorasProgramadas.forEach(em => {
-        emissorasProgramadasMap.set(em.name, em);
-    });
-    
     // Iterar sobre as inserções reais para contar campanhas por emissora
     insercoes.forEach(insercao => {
         const emissoraKey = insercao.stationName;
@@ -1074,34 +1068,20 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
         }
         
         if (!emissorasTopMap.has(emissoraKey)) {
-            // 🔵 NOVO: Tentar buscar dados da emissora em emissorasProgramadas PRIMEIRO
-            const emissoraProgramada = emissorasProgramadasMap.get(emissoraKey);
-            
             emissorasTopMap.set(emissoraKey, {
                 name: emissoraKey,
-                city: emissoraProgramada?.city || insercao.city || '',
-                uf: emissoraProgramada?.uf || insercao.uf || '',
                 numerosCampanhasAtivas: new Set()
             });
         }
         
         const emissoraData = emissorasTopMap.get(emissoraKey);
         emissoraData.numerosCampanhasAtivas.add(campanhaKey); // Adiciona campanha ao Set (sem duplicar)
-        // Atualizar cidade e UF se ainda não temos (pega da primeira com dados)
-        if (!emissoraData.city && insercao.city) {
-            emissoraData.city = insercao.city;
-        }
-        if (!emissoraData.uf && insercao.uf) {
-            emissoraData.uf = insercao.uf;
-        }
     });
 
     // Emissoras com maior número de campanhas (baseado em inserções reais)
     const topEmissoras = Array.from(emissorasTopMap.values())
         .map(e => ({
             emissora: e.name,
-            cidade: e.city,
-            uf: e.uf,
             numerosCampanhasAtivas: e.numerosCampanhasAtivas.size
         }))
         .sort((a, b) => b.numerosCampanhasAtivas - a.numerosCampanhasAtivas)
@@ -1109,7 +1089,7 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
 
     console.log(`📊 Emissoras com maior número de campanhas ativas (BASEADO EM INSERÇÕES REAIS - ${emissorasTopMap.size} emissoras com inserções):`);
     topEmissoras.slice(0, 5).forEach((e, i) => {
-        console.log(`   ${i+1}. ${e.cidade}/${e.uf} - ${e.emissora} - ${e.numerosCampanhasAtivas} campanhas`);
+        console.log(`   ${i+1}. ${e.emissora} - ${e.numerosCampanhasAtivas} campanhas`);
     });
     
     // ===== 2. CIDADES COM MAIOR NÚMERO DE EMISSORAS ATIVAS =====
