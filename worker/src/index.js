@@ -1058,6 +1058,12 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
     
     const emissorasTopMap = new Map();
     
+    // 🔵 NOVO: Criar mapa rápido das emissoras programadas para buscar cidade/UF
+    const emissorasProgramadasMap = new Map();
+    emissorasProgramadas.forEach(em => {
+        emissorasProgramadasMap.set(em.name, em);
+    });
+    
     // Iterar sobre as inserções reais para contar campanhas por emissora
     insercoes.forEach(insercao => {
         const emissoraKey = insercao.stationName;
@@ -1068,10 +1074,13 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
         }
         
         if (!emissorasTopMap.has(emissoraKey)) {
+            // 🔵 NOVO: Tentar buscar dados da emissora em emissorasProgramadas PRIMEIRO
+            const emissoraProgramada = emissorasProgramadasMap.get(emissoraKey);
+            
             emissorasTopMap.set(emissoraKey, {
                 name: emissoraKey,
-                city: insercao.city || '',
-                uf: insercao.uf || '',
+                city: emissoraProgramada?.city || insercao.city || '',
+                uf: emissoraProgramada?.uf || insercao.uf || '',
                 numerosCampanhasAtivas: new Set()
             });
         }
