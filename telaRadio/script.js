@@ -441,14 +441,26 @@ function iniciarLimpezaPeriodica() {
         // 7️⃣ Verificar pings orfãos (no mapa mas não em animacoesAtivas)
         const pingas = document.querySelectorAll('.pinga');
         let orfaos = 0;
+        let azuisEncontrados = 0;
         pingas.forEach(pinga => {
-            if (!animacoesAtivas.has(pinga.id)) {
-                console.warn(`   ⚠️ Pinga orfão encontrado: ${pinga.id}`);
+            // Proteger pings azuis - nunca remover!
+            if (pinga.classList.contains('pinga-azul')) {
+                azuisEncontrados++;
+                // Se o pinga azul não está em animacoesAtivas, adicionar de volta
+                if (!animacoesAtivas.has(pinga.id)) {
+                    console.warn(`   🔵 PROTEÇÃO: Pinga azul orfão encontrado e recuperado: ${pinga.id}`);
+                    animacoesAtivas.set(pinga.id, pinga);
+                }
+            } else if (!animacoesAtivas.has(pinga.id)) {
+                console.warn(`   ⚠️ Pinga rosa orfão encontrado: ${pinga.id}`);
                 orfaos++;
             }
         });
+        if (azuisEncontrados > 0) {
+            console.log(`   🔵 ${azuisEncontrados} pings AZUIS verificados (todos protegidos)`);
+        }
         if (orfaos > 0) {
-            console.log(`   🗑️ Pingas orfãos encontrados: ${orfaos}`);
+            console.log(`   🗑️ Pingas rosas orfãos encontrados: ${orfaos}`);
         }
         
         console.log(`%c✅ LIMPEZA CONCLUÍDA - Memória otimizada`, 'color: #4caf50; font-weight: bold; font-size: 12px;');
@@ -459,6 +471,7 @@ function iniciarLimpezaPeriodica() {
             campanhasDetectadas: campanhasDetectadas.size,
             campanhasDataDeteccao: campanhasDataDeteccao.size,
             milestoneCampanhas: milesmoneCampanhas.size,
+            pingsAzuisPermanentes: pingsPermanentes.size,
             animacoesAtivas: animacoesAtivas.size,
             totalMemEmUso: (performance.memory?.usedJSHeapSize / 1048576).toFixed(2) + ' MB'
         });
@@ -530,14 +543,11 @@ async function cicloAtualizacaoRecorrente() {
         
         if (agora - window._ultimaAtualizacaoCompleta >= 90000) {
             try {
-                const fullResponse = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
-                if (fullResponse.ok) {
-                    const fullData = await fullResponse.json();
-                    if (fullData.success) {
-                        // Atualizar apenas as 5 métricas (com proteção de monotonicity)
-                        atualizarApenasMetricas();
-                    }
-                }
+                // 🔵 IMPORTANTE: Buscar dashboard completo (não apenas métricas)
+                // Isso garante que os pings AZUIS PERMANENTES sejam recarregados
+                // e nunca desapareçam da tela
+                console.log(`🔄 Atualizando dashboard completo + pings permanentes...`);
+                await buscarDashboardCompleto();
             } catch (erro) {
                 console.error('❌ Erro ao atualizar dashboard completo:', erro);
             }
@@ -766,7 +776,7 @@ function renderizarGraficoEmissoras(topEmissoras) {
 
     console.log(`📊 renderizarGraficoEmissoras() recebeu ${topEmissoras.length} emissoras:`);
     topEmissoras.slice(0, 5).forEach((e, i) => {
-        console.log(`   [${i}] ${e.emissora} - campanhas: ${e.numerosCampanhasAtivas}`);
+        console.log(`   [${i}] ${e.cidade}/${e.uf} - ${e.emissora} - campanhas: ${e.numerosCampanhasAtivas}`);
     });
 
     // Usar "numerosCampanhasAtivas" como valor principal
@@ -775,11 +785,13 @@ function renderizarGraficoEmissoras(topEmissoras) {
     const graficoHTML = topEmissoras.slice(0, 8).map(emissora => {
         const valor = emissora.numerosCampanhasAtivas || 0;
         const larguraPercentual = (valor / maxValor) * 100;
-        const nomeResumido = truncarTexto(emissora.emissora, 40);
+        // 🔵 NOVO: Incluir cidade na exibição
+        const labelCompleto = `${emissora.cidade || 'N/A'}/${emissora.uf || 'N/A'} - ${emissora.emissora}`;
+        const nomeResumido = truncarTexto(labelCompleto, 50);
 
         return `
             <div class="grafico-barra">
-                <div class="grafico-label" title="${emissora.emissora}">${nomeResumido}</div>
+                <div class="grafico-label" title="${labelCompleto}">${nomeResumido}</div>
                 <div class="grafico-bar-container">
                     <div class="grafico-bar" style="width: ${larguraPercentual}%">
                         <span class="grafico-valor">${valor}</span>
