@@ -118,149 +118,146 @@ const CONFIG = {
 };
 
 // ========================================
-// SISTEMA DE 2 MODOS DE EXIBIÇÃO DE PINGS
+// SISTEMA UNIFICADO DE PINGS
 // ========================================
-// Modo 1: Ephemeral (15 minutos) - Pings desaparecem após 30s
-// Modo 2: Aggregate (10 minutos) - Pings fixos, agrupados por cidade
-let modoAtualPings = 1; // Começa em Modo 1
-let timerAlternancia = null;
-let pingtimeoutModo2 = new Map(); // Rastrear timeouts de Modo 2 por cidade
+// Um único ping por cidade que:
+// - Fica AZUL quando é a inserção mais recente (sem legenda)
+// - Fica ROSA quando surge uma inserção mais nova (mostra legenda: emissora + cidade)
+// - Persiste no Dashboard 100% do tempo (até sair da janela de recência)
 
-const MODO_TEMPOS = {
-    1: 60 * 1000,  // 60 segundos para Modo 1 (Rosa)
-    2: 45 * 1000   // 45 segundos para Modo 2 (Azul)
-};
-
-const iniciarAlternanciaModoPings = () => {
-    const alternarModo = () => {
-        const modoAnterior = modoAtualPings;
-        modoAtualPings = modoAtualPings === 1 ? 2 : 1;
-        console.log(`🔄 ALTERNÂNCIA DE MODOS: Entrando em MODO ${modoAtualPings}`);
-        
-        if (modoAtualPings === 2) {
-            // Entrando em Modo 2: processar TODAS as inserções do dia por cidade
-            console.log(`📍 Modo 2: Agregando TODAS as inserções do dia por cidade`);
-            processarTodasInsercoesModo2(dashboardData);
-        } else {
-            // Entrando em Modo 1: limpar pings agregados
-            console.log(`📡 Modo 1: Voltando ao modo ephemeral (pings desaparecem após 30s)`);
-            limparPingsAgregados();
-        }
-        
-        // Agendar próxima alternância
-        timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[modoAtualPings]);
-    };
-    
-    // Iniciar primeira alternância (começa em Modo 1 por 60s)
-    timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
-    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (60s) → Modo 2 (45s) → Repetir`);
-};
+let pingsAtivos = new Map(); // Rastrear pings: { cidadeKey => { pinga, dados, proximaAtualizacao, ...} }
+let ultimasInsercoesPorCidade = new Map(); // Rastrear última inserção por cidade para detectar mudanças
 
 /**
- * 🎯 MODO 2: Processa TODAS as inserções do dia e agrupa por cidade
- * Cria um pinga agregado para cada cidade com contador
+ * 🎯 NOVO SISTEMA UNIFICADO DE PINGS
+ * Atualiza o ping de uma cidade quando nova inserção surge
+ * - Azul: inserção mais recente (sem legenda)
+ * - Rosa: inserção anterior (com legenda: emissora + cidade)
  */
-const processarTodasInsercoesModo2 = async (data) => {
-    if (!data || !data.insercoesRecentes) {
-        console.warn('⚠️ Sem dados de inserções para processar em Modo 2');
-        return;
-    }
-
-    console.log(`🔄 Processando ${data.insercoesRecentes.length} inserções em Modo 2...`);
-
-    // Agrupar inserções por cidade
-    const insercoesPorCidade = {};
-    
-    data.insercoesRecentes.forEach(insercao => {
-        const cidade = insercao.city || 'Desconhecida';
-        if (!insercoesPorCidade[cidade]) {
-            insercoesPorCidade[cidade] = [];
-        }
-        insercoesPorCidade[cidade].push(insercao);
-    });
-
-    // Para cada cidade, buscar coordenadas e criar pinga agregado UMA VEZ
-    for (const [cidade, insercoes] of Object.entries(insercoesPorCidade)) {
-        try {
-            // Buscar coordenadas da cidade
-            const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(cidade)}`);
-            if (!coordResp.ok) {
-                console.warn(`⚠️ Não conseguiu coordenadas para ${cidade}`);
-                continue;
-            }
-
-            const coordData = await coordResp.json();
-            if (!coordData.sucesso || !coordData.coordenada) {
-                console.warn(`⚠️ Coordenadas inválidas para ${cidade}`);
-                continue;
-            }
-
-            const coordenada = coordData.coordenada;
-
-            // Criar UMA animação agregada para essa cidade
-            const animacao = {
-                id: `pinga-agregado-${cidade}`,
-                lat: parseFloat(coordenada.lat),
-                lng: parseFloat(coordenada.lng),
-                dados: {
-                    emissora: 'Agregado',
-                    cidade: cidade,
-                    uf: insercoes[0].uf || 'N/A',
-                    cliente: 'N/A',
-                    horario: 'N/A',
-                    campanha: `${insercoes.length} inserções`
-                },
-                origem: 'modo2-agregado'
-            };
-
-            const container = document.getElementById('animacoes-layer');
-            const mapaContainer = document.getElementById('mapa-container');
-            
-            if (!container || !mapaContainer) {
-                console.error(`❌ Containers do mapa não encontrados`);
-                continue;
-            }
-
-            const bounds = mapaContainer.getBoundingClientRect();
-            
-            // Criar o pinga (função detectará modoAtualPings === 2)
-            criarPinga(animacao, container, bounds);
-            
-            console.log(`✅ Pinga agregado criado: ${cidade} (${insercoes.length} inserções)`);
-
-        } catch (error) {
-            console.error(`❌ Erro processando ${cidade}:`, error);
-        }
-
-        // Pequeno delay entre requisições
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    console.log(`✅ Modo 2: Todos os pings agregados criados`);
-};
-
-/**
- * 🧹 Limpar todos os pings agregados ao sair do Modo 2
- */
-const limparPingsAgregados = () => {
+const atualizarPingaDaCidade = async (cidade, uf, novaInsercao) => {
+    const cidadeKey = `${cidade}/${uf}`;
     const container = document.getElementById('animacoes-layer');
+    
     if (!container) return;
 
-    // Remover todos os pings com ID começando em "pinga-agregado-"
-    Array.from(container.querySelectorAll('[id^="pinga-agregado-"]')).forEach(pinga => {
-        pinga.classList.add('fade-out');
-        setTimeout(() => {
-            pinga.remove();
-            animacoesAtivas.delete(pinga.id);
-        }, 800);
+    // Verificar se já temos um ping para essa cidade
+    const pingAnterior = pingsAtivos.get(cidadeKey);
+    
+    if (pingAnterior) {
+        // ✨ TRANSIÇÃO: Converter ping azul (recente) para rosa (antigo)
+        const pingElement = pingAnterior.elemento;
+        
+        if (pingElement) {
+            // Mudar de azul para rosa
+            pingElement.classList.remove('pinga-azul');
+            pingElement.classList.add('pinga-rosa');
+            
+            // Adicionar legenda (emissora + cidade)
+            const labelDiv = pingElement.querySelector('.pinga-legenda');
+            if (labelDiv) {
+                labelDiv.innerHTML = `
+                    <div class="legenda-content">
+                        <div class="legenda-emissora">${pingAnterior.dados.emissora}</div>
+                        <div class="legenda-cidade">${cidade}</div>
+                    </div>
+                `;
+                labelDiv.style.display = 'block';
+            }
+            
+            console.log(`🔄 Ping convertido para ROSA: ${cidadeKey} (anterior: ${pingAnterior.dados.emissora})`);
+        }
+    }
+    
+    // ✨ CRIAR OU ATUALIZAR: Novo ping azul para essa cidade
+    try {
+        // Buscar coordenadas se não temos
+        const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(cidade)}`);
+        if (!coordResp.ok) {
+            console.warn(`⚠️ Não conseguiu coordenadas para ${cidade}`);
+            return;
+        }
+
+        const coordData = await coordResp.json();
+        if (!coordData.sucesso || !coordData.coordenada) {
+            console.warn(`⚠️ Coordenadas inválidas para ${cidade}`);
+            return;
+        }
+
+        const coordenada = coordData.coordenada;
+        const pos = coordenadasParaPixels(parseFloat(coordenada.lat), parseFloat(coordenada.lng));
+        
+        // Criar novo elemento de ping AZUL
+        const novoPinga = document.createElement('div');
+        novoPinga.id = `pinga-${cidadeKey.replace(/\//g, '-')}`;
+        novoPinga.className = 'pinga pinga-azul'; // ← AZUL por padrão
+        novoPinga.style.left = `${pos.x}px`;
+        novoPinga.style.top = `${pos.y}px`;
+        novoPinga.style.zIndex = '100';
+        novoPinga.style.position = 'absolute';
+        
+        novoPinga.innerHTML = `
+            <div class="pinga-circle"></div>
+            <div class="pinga-ripple"></div>
+            <div class="pinga-legenda" style="display: none;"></div>
+        `;
+        
+        container.appendChild(novoPinga);
+        
+        // Rastrear este ping
+        pingsAtivos.set(cidadeKey, {
+            elemento: novoPinga,
+            dados: {
+                emissora: novaInsercao.stationName,
+                cidade: cidade,
+                uf: uf,
+                timestamp: new Date().toISOString()
+            },
+            coordenada: coordenada
+        });
+        
+        console.log(`🔵 Novo ping AZUL criado: ${cidadeKey} (${novaInsercao.stationName})`);
+        
+    } catch (error) {
+        console.error(`❌ Erro ao atualizar ping de ${cidadeKey}:`, error);
+    }
+};
+
+// Função auxiliar para processar inserções recentes e atualizar pings
+const processarInsercoesRecentes = (insercoes) => {
+    if (!insercoes || insercoes.length === 0) return;
+
+    // Agrupar por cidade, pegando a MAIS RECENTE de cada cidade
+    const ultimaPorCidade = new Map();
+    
+    insercoes.forEach(insercao => {
+        const cidade = insercao.city;
+        if (!cidade) return;
+        
+        const chave = `${cidade}/${insercao.uf}`;
+        
+        // Guardar apenas a inserção mais recente de cada cidade
+        if (!ultimaPorCidade.has(chave)) {
+            ultimaPorCidade.set(chave, insercao);
+        }
     });
 
-    // Limpar timeouts de Modo 2
-    pingtimeoutModo2.forEach(timeoutId => clearTimeout(timeoutId));
-    pingtimeoutModo2.clear();
-
-    console.log(`🧹 Pings agregados removidos`);
+    // Atualizar pings com as inserções mais recentes
+    ultimaPorCidade.forEach((insercao, cidadeKey) => {
+        const [cidade, uf] = cidadeKey.split('/');
+        atualizarPingaDaCidade(cidade, uf, insercao);
+    });
 };
+
+// Chamar isso sempre que buscar novas inserções
+const iniciarAlternanciaModoPings = () => {
+    // Nada mais a fazer aqui - os pings agora são gerenciados conforme novas inserções chegam
+    console.log(`✅ Sistema unificado de pings iniciado`);
+};
+
+/**
+ * 🎯 MODO 2 REMOVIDO - Sistema unificado de pings agora ativo
+ * Veja: atualizarPingaDaCidade()
+ */
 
 // Estado global
 let dashboardData = null;
@@ -1317,125 +1314,35 @@ async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
 }
 
 function criarPinga(animacao, container, bounds) {
+    // ⭐ NOVO SISTEMA: Usar atualizarPingaDaCidade() em vez desta função
+    // Esta função agora é apenas para pings de teste e compatibilidade
+    
     try {
         const pinga = document.createElement('div');
-        pinga.className = modoAtualPings === 2 ? 'pinga pinga-modo-2' : 'pinga';
+        pinga.className = 'pinga pinga-teste';
         pinga.id = animacao.id;
 
         // Converter coordenadas geográficas para pixels do SVG
         const pos = coordenadasParaPixels(animacao.lat, animacao.lng);
-        
-        if (CONFIG.VERBOSE_LOGS) {
-            console.group(`%c🔴 CRIANDO PING - DETALHADO`, 'color: #ff0000; font-weight: bold;');
-            console.log(`   ID: ${animacao.id}`);
-            console.log(`   Modo: ${modoAtualPings}`);
-            console.log(`   Emissora: ${animacao.dados.emissora}`);
-            console.log(`   Cidade: ${animacao.dados.cidade}/${animacao.dados.uf}`);
-            console.log(`   Horário: ${animacao.dados.horario}`);
-            console.log(`   Coordenadas: lat=${animacao.lat.toFixed(4)}, lng=${animacao.lng.toFixed(4)}`);
-            console.log(`   Pixels: x=${pos.x.toFixed(2)}, y=${pos.y.toFixed(2)}`);
-            console.groupEnd();
-        } else {
-            LoggerOtimizado.log(`Pinga [Modo ${modoAtualPings}]: ${animacao.dados.cidade}`, 'pinga-criado');
-        }
 
         pinga.style.left = `${pos.x}px`;
         pinga.style.top = `${pos.y}px`;
         pinga.style.zIndex = '100';
         pinga.style.position = 'absolute';
 
-        // ========================================
-        // MODO 1: Ephemeral (com horário, emissora e cidade)
-        // ========================================
-        if (modoAtualPings === 1) {
-            const emissora = animacao.dados.emissora.split('(')[0].trim();
-            pinga.innerHTML = `
+        // Renderizar conforme tipo
+        pinga.innerHTML = `
             <div class="pinga-circle"></div>
             <div class="pinga-ripple"></div>
-            <div class="label-permanente">
-                <div class="label-content">
-                    <div class="label-horario">${animacao.dados.horario}</div>
-                    <div class="label-emissora">${emissora}</div>
-                    <div class="label-cidade">${animacao.dados.cidade}</div>
-                </div>
-            </div>
         `;
             
-            container.appendChild(pinga);
-            animacoesAtivas.set(animacao.id, pinga);
-            
-            // Remover pinga após 30s com fadeout (Modo 1)
-            const DURACAO_PINGA_MS = 30000;
-            const DURACAO_FADEOUT_MS = 800;
-            
-            if (animacao.id !== 'ping-teste-brasilia') {
-                setTimeout(() => {
-                    const pingElement = document.getElementById(animacao.id);
-                    if (pingElement) {
-                        pingElement.classList.add('fade-out');
-                        setTimeout(() => {
-                            if (pingElement.parentNode) {
-                                pingElement.remove();
-                                animacoesAtivas.delete(animacao.id);
-                            }
-                        }, DURACAO_FADEOUT_MS);
-                    }
-                }, DURACAO_PINGA_MS);
-            }
-        }
-        // ========================================
-        // MODO 2: Aggregate (apenas ping sem rótulo)
-        // ========================================
-        else if (modoAtualPings === 2) {
-            const cidade = animacao.dados.cidade;
-            
-            // Verificar se já existe pinga dessa cidade
-            const pingaDaCidadeId = `pinga-agregado-${cidade}`;
-            const pingaExistente = document.getElementById(pingaDaCidadeId);
-            
-            if (pingaExistente) {
-                // Incrementar contador (armazenado como atributo, não exibido)
-                const count = parseInt(pingaExistente.dataset.count || 1) + 1;
-                pingaExistente.dataset.count = count;
-                
-                // Limpar timeout anterior se existir
-                if (pingtimeoutModo2.has(cidade)) {
-                    clearTimeout(pingtimeoutModo2.get(cidade));
-                }
-            } else {
-                // Criar novo pinga agregado (sem rótulo)
-                pinga.id = pingaDaCidadeId;
-                pinga.dataset.count = 1;
-                pinga.innerHTML = `
-                <div class="pinga-circle"></div>
-                <div class="pinga-ripple"></div>
-            `;
-                
-                container.appendChild(pinga);
-                animacoesAtivas.set(pingaDaCidadeId, pinga);
-            }
-            
-            // Remover pinga após 10 minutos (duração do Modo 2)
-            const timeoutId = setTimeout(() => {
-                const pingElement = document.getElementById(`pinga-agregado-${cidade}`);
-                if (pingElement) {
-                    pingElement.classList.add('fade-out');
-                    setTimeout(() => {
-                        if (pingElement.parentNode) {
-                            pingElement.remove();
-                            animacoesAtivas.delete(`pinga-agregado-${cidade}`);
-                            pingtimeoutModo2.delete(cidade);
-                        }
-                    }, 800);
-                }
-            }, MODO_TEMPOS[2]);
-            
-            pingtimeoutModo2.set(cidade, timeoutId);
-        }
+        container.appendChild(pinga);
+        animacoesAtivas.set(animacao.id, pinga);
+        
+        console.log(`✅ Pinga de teste criado: ${animacao.dados.cidade}`);
         
     } catch (error) {
         console.error(`❌ ERRO ao criar pinga: ${error.message}`);
-        console.error(`   Stack: ${error.stack}`);
     }
 }
 

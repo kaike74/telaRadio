@@ -10,7 +10,7 @@
 
 const VIDEO_CONFIG = {
     // Timing (em milisegundos)
-    DASHBOARD_DURATION: 10 * 60 * 1000,     // 10 minutos para pré-carregar vídeos
+    DASHBOARD_DURATION: 18 * 60 * 1000,     // 18 minutos para pré-carregar vídeos
     VIDEO_CYCLE_DURATION: 3 * 60 * 1000,    // 3 minutos de vídeos
     SINGLE_VIDEO_DURATION: 25000,            // ~25 segundos por vídeo (duração média estimada)
     
