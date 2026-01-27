@@ -1306,11 +1306,15 @@ function criarPinga(animacao, container, bounds) {
             container.appendChild(pinga);
             animacoesAtivas.set(animacao.id, pinga);
             
-            // Remover pinga após 30s com fadeout (Modo 1)
-            const DURACAO_PINGA_MS = 30000;
-            const DURACAO_FADEOUT_MS = 800;
+            // 🔵 NOVO: Verificar se é pinga azul permanente
+            const ehPingaAzul = animacao.origem === 'pinga-azul-permanente' || animacao.tipo === 'azul';
             
-            if (animacao.id !== 'ping-teste-brasilia') {
+            // ⭐ PINGS AZUIS: NÃO REMOVEM NUNCA - INFINITOS!
+            if (!ehPingaAzul && animacao.id !== 'ping-teste-brasilia') {
+                // Remover pinga após 30s com fadeout (apenas para pings ROSA temporários)
+                const DURACAO_PINGA_MS = 30000;
+                const DURACAO_FADEOUT_MS = 800;
+                
                 setTimeout(() => {
                     const pingElement = document.getElementById(animacao.id);
                     if (pingElement) {
@@ -1323,6 +1327,8 @@ function criarPinga(animacao, container, bounds) {
                         }, DURACAO_FADEOUT_MS);
                     }
                 }, DURACAO_PINGA_MS);
+            } else if (ehPingaAzul) {
+                console.log(`🔵 Pinga AZUL criado - PERMANENTE (infinito): ${animacao.id}`);
             }
         }
         // ========================================
