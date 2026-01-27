@@ -561,11 +561,27 @@ svg {
 
 .legenda-emissora {
     font-weight: 700;
+    font-size: 11px;
 }
 
 .legenda-cidade {
     font-size: 10px;
     opacity: 0.9;
+}
+
+.legenda-horario {
+    font-size: 9px;
+    opacity: 0.85;
+    margin-top: 2px;
+}
+
+.legenda-campanha {
+    font-size: 9px;
+    opacity: 0.85;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 @keyframes pulsePing {

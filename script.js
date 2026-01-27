@@ -208,10 +208,11 @@ const criarPingsAzuisDosDia = async (todasAsCidades) => {
 
 /**
  * 🌸 Animar ping AZUL → ROSA por 30 segundos quando inserção chega
- * - Se já existe ping azul: converte para rosa + mostra legenda
+ * - Se já existe ping azul: converte para rosa + mostra legenda com DADOS COMPLETOS
+ * - Mostra: Emissora, Cidade, Horário, Campanha (como era antes)
  * - Depois volta azul e oculta legenda
  */
-const animarPingRosaPor30Segundos = (cidade, uf, emissora) => {
+const animarPingRosaPor30Segundos = (cidade, uf, emissora, horario, campanha) => {
     const cidadeKey = `${cidade}/${uf}`;
     const pingData = pingsAzuis.get(cidadeKey);
     
@@ -231,19 +232,21 @@ const animarPingRosaPor30Segundos = (cidade, uf, emissora) => {
     element.classList.remove('pinga-azul');
     element.classList.add('pinga-rosa');
     
-    // Preencher legenda
+    // Preencher legenda COM DADOS COMPLETOS (Emissora, Cidade, Horário, Campanha)
     const labelDiv = element.querySelector('.pinga-legenda');
     if (labelDiv) {
         labelDiv.innerHTML = `
             <div class="legenda-content">
                 <div class="legenda-emissora">${emissora}</div>
                 <div class="legenda-cidade">${cidade}</div>
+                <div class="legenda-horario">${horario}</div>
+                <div class="legenda-campanha">${campanha}</div>
             </div>
         `;
         labelDiv.style.display = 'block';
     }
     
-    console.log(`🌸 Ping ROSA (30s): ${cidadeKey} - ${emissora}`);
+    console.log(`🌸 Ping ROSA (30s): ${cidadeKey} - ${emissora} @ ${horario} - ${campanha}`);
     
     // VOLTAR: Rosa → Azul + Ocultar legenda após 30 segundos
     const timerId = setTimeout(() => {
@@ -285,10 +288,10 @@ const processarInsercoesRecentes = (insercoesRecentes) => {
         }
     });
 
-    // Animar cada ping para rosa (passando a emissora para a legenda)
+    // Animar cada ping para rosa com DADOS COMPLETOS (Emissora, Cidade, Horário, Campanha)
     ultimaPorCidade.forEach((insercao, cidadeKey) => {
         const [cidade, uf] = cidadeKey.split('/');
-        animarPingRosaPor30Segundos(cidade, uf, insercao.stationName);
+        animarPingRosaPor30Segundos(cidade, uf, insercao.stationName, insercao.hour, insercao.campaign);
     });
 };
 
