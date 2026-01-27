@@ -491,9 +491,9 @@ svg {
 .pinga-circle {
     width: 100%;
     height: 100%;
-    background: #5A5FFF; /* Azul por padrão */
+    background: #E03D99;
     border-radius: 50%;
-    box-shadow: 0 0 10px #5A5FFF, 0 0 20px rgba(90, 95, 255, 0.4);
+    box-shadow: 0 0 10px #E03D99, 0 0 20px rgba(224, 61, 153, 0.4);
     animation: pulsePing 1.5s ease-in-out infinite;
 }
 
@@ -510,79 +510,14 @@ svg {
 }
 
 /* ========================================
-   NOVO SISTEMA: PINGA AZUL (Cidade ativa o dia todo)
+   MODO 2: PINGA COM COR AZUL
    ======================================== */
-.pinga-azul .pinga-circle {
+.pinga-modo-2 .pinga-circle {
     background: #5A5FFF;
     box-shadow: 0 0 10px #5A5FFF, 0 0 20px rgba(90, 95, 255, 0.4);
 }
 
-.pinga-azul .pinga-ripple {
-    border-color: #5A5FFF;
-}
-
-/* ========================================
-   NOVO SISTEMA: PINGA ROSA (Feedback - 30 segundos quando inserção chega)
-   ======================================== */
-.pinga-rosa .pinga-circle {
-    background: #E03D99;
-    box-shadow: 0 0 10px #E03D99, 0 0 20px rgba(224, 61, 153, 0.4);
-}
-
-.pinga-rosa .pinga-ripple {
-    border-color: #E03D99;
-}
-
-/* Legenda para ping rosa (emissora + cidade) - Aparece somente quando rosa */
-.pinga-legenda {
-    position: absolute;
-    top: 25px;
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    background: rgba(224, 61, 153, 0.95);
-    color: #ffffff;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    border: 1px solid rgba(224, 61, 153, 0.7);
-    backdrop-filter: blur(10px);
-    z-index: 101;
-    display: none;
-}
-
-.legenda-content {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    text-align: center;
-}
-
-.legenda-emissora {
-    font-weight: 700;
-    font-size: 11px;
-}
-
-.legenda-cidade {
-    font-size: 10px;
-    opacity: 0.9;
-}
-
-.legenda-horario {
-    font-size: 9px;
-    opacity: 0.85;
-    margin-top: 2px;
-}
-
-.legenda-campanha {
-    font-size: 9px;
-    opacity: 0.85;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+/* Badge label - REMOVIDO (não utilizado) */
 
 @keyframes pulsePing {
 
