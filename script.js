@@ -118,140 +118,216 @@ const CONFIG = {
 };
 
 // ========================================
-// SISTEMA UNIFICADO DE PINGS
+// SISTEMA DE PINGS - AZUL PERMANENTE + ROSA TEMPORÁRIA
 // ========================================
-// Um único ping por cidade que:
-// - Fica AZUL quando é a inserção mais recente (sem legenda)
-// - Fica ROSA quando surge uma inserção mais nova (mostra legenda: emissora + cidade)
-// - Persiste no Dashboard 100% do tempo (até sair da janela de recência)
+// Pings AZUIS: Mostram TODAS as cidades ativas do dia (100% permanentes, sem descrição)
+// Pings ROSA: Aparecem por 30s quando uma inserção chega naquela cidade (animação feedback)
+// 
+// Fluxo:
+// 1. Inicializar: Criar pings azuis para cada cidade do dia
+// 2. Quando inserção chega: Cidade já tem ping azul → Animar: azul → rosa (30s) → azul
+// 3. Nova inserção mesma cidade: Repete a animação rosa (30s) → azul
 
-let pingsAtivos = new Map(); // Rastrear pings: { cidadeKey => { pinga, dados, proximaAtualizacao, ...} }
-let ultimasInsercoesPorCidade = new Map(); // Rastrear última inserção por cidade para detectar mudanças
+let pingsAzuis = new Map(); // { cidadeKey => { elemento, coordenada, ... } }
+let timersRosa = new Map();  // { cidadeKey => timerId } para controlar duração rosa
 
 /**
- * 🎯 NOVO SISTEMA UNIFICADO DE PINGS
- * Atualiza o ping de uma cidade quando nova inserção surge
- * - Azul: inserção mais recente (sem legenda)
- * - Rosa: inserção anterior (com legenda: emissora + cidade)
+ * 🔵 Criar pings AZUIS permanentes para TODAS as cidades
+ * Chamado UMA VEZ no início (com todasInsercoes.map + all cities)
+ * Pings ficam AZUIS 100% do tempo até serem removidos
  */
-const atualizarPingaDaCidade = async (cidade, uf, novaInsercao) => {
-    const cidadeKey = `${cidade}/${uf}`;
+const criarPingsAzuisDosDia = async (todasAsCidades) => {
     const container = document.getElementById('animacoes-layer');
-    
     if (!container) return;
 
-    // Verificar se já temos um ping para essa cidade
-    const pingAnterior = pingsAtivos.get(cidadeKey);
-    
-    if (pingAnterior) {
-        // ✨ TRANSIÇÃO: Converter ping azul (recente) para rosa (antigo)
-        const pingElement = pingAnterior.elemento;
-        
-        if (pingElement) {
-            // Mudar de azul para rosa
-            pingElement.classList.remove('pinga-azul');
-            pingElement.classList.add('pinga-rosa');
+    console.log(`🔵 Criando ${todasAsCidades.length} pings AZUIS permanentes...`);
+
+    for (const cidade of todasAsCidades) {
+        try {
+            const cidadeKey = `${cidade.cidade}/${cidade.uf}`;
             
-            // Adicionar legenda (emissora + cidade)
-            const labelDiv = pingElement.querySelector('.pinga-legenda');
-            if (labelDiv) {
-                labelDiv.innerHTML = `
-                    <div class="legenda-content">
-                        <div class="legenda-emissora">${pingAnterior.dados.emissora}</div>
-                        <div class="legenda-cidade">${cidade}</div>
-                    </div>
-                `;
-                labelDiv.style.display = 'block';
+            // Evitar duplicatas
+            if (pingsAzuis.has(cidadeKey)) {
+                console.log(`   ⏭️  Ping já existe: ${cidadeKey}`);
+                continue;
             }
+
+            // Buscar coordenadas
+            const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(cidade.cidade)}`);
+            if (!coordResp.ok) {
+                console.warn(`⚠️ Sem coordenadas: ${cidade.cidade}`);
+                continue;
+            }
+
+            const coordData = await coordResp.json();
+            if (!coordData.sucesso || !coordData.coordenada) {
+                console.warn(`⚠️ Coordenadas inválidas: ${cidade.cidade}`);
+                continue;
+            }
+
+            const coordenada = coordData.coordenada;
+            const pos = coordenadasParaPixels(parseFloat(coordenada.lat), parseFloat(coordenada.lng));
             
-            console.log(`🔄 Ping convertido para ROSA: ${cidadeKey} (anterior: ${pingAnterior.dados.emissora})`);
+            // Criar elemento AZUL (sem legenda, sem descrição)
+            const novoPinga = document.createElement('div');
+            novoPinga.id = `pinga-${cidadeKey.replace(/\//g, '-')}`;
+            novoPinga.className = 'pinga pinga-azul';
+            novoPinga.style.left = `${pos.x}px`;
+            novoPinga.style.top = `${pos.y}px`;
+            novoPinga.style.zIndex = '100';
+            novoPinga.style.position = 'absolute';
+            
+            novoPinga.innerHTML = `
+                <div class="pinga-circle"></div>
+                <div class="pinga-ripple"></div>
+                <div class="pinga-legenda" style="display: none;"></div>
+            `;
+            
+            container.appendChild(novoPinga);
+            
+            // Rastrear ping
+            pingsAzuis.set(cidadeKey, {
+                elemento: novoPinga,
+                coordenada: coordenada,
+                cidade: cidade.cidade,
+                uf: cidade.uf
+            });
+            
+            console.log(`   ✅ ${cidadeKey} - Ping AZUL criado`);
+            
+            // Pequeno delay para não sobrecarregar
+            await new Promise(r => setTimeout(r, 100));
+            
+        } catch (error) {
+            console.error(`❌ Erro criar ping ${cidade.cidade}:`, error);
         }
     }
     
-    // ✨ CRIAR OU ATUALIZAR: Novo ping azul para essa cidade
-    try {
-        // Buscar coordenadas se não temos
-        const coordResp = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(cidade)}`);
-        if (!coordResp.ok) {
-            console.warn(`⚠️ Não conseguiu coordenadas para ${cidade}`);
-            return;
-        }
-
-        const coordData = await coordResp.json();
-        if (!coordData.sucesso || !coordData.coordenada) {
-            console.warn(`⚠️ Coordenadas inválidas para ${cidade}`);
-            return;
-        }
-
-        const coordenada = coordData.coordenada;
-        const pos = coordenadasParaPixels(parseFloat(coordenada.lat), parseFloat(coordenada.lng));
-        
-        // Criar novo elemento de ping AZUL
-        const novoPinga = document.createElement('div');
-        novoPinga.id = `pinga-${cidadeKey.replace(/\//g, '-')}`;
-        novoPinga.className = 'pinga pinga-azul'; // ← AZUL por padrão
-        novoPinga.style.left = `${pos.x}px`;
-        novoPinga.style.top = `${pos.y}px`;
-        novoPinga.style.zIndex = '100';
-        novoPinga.style.position = 'absolute';
-        
-        novoPinga.innerHTML = `
-            <div class="pinga-circle"></div>
-            <div class="pinga-ripple"></div>
-            <div class="pinga-legenda" style="display: none;"></div>
-        `;
-        
-        container.appendChild(novoPinga);
-        
-        // Rastrear este ping
-        pingsAtivos.set(cidadeKey, {
-            elemento: novoPinga,
-            dados: {
-                emissora: novaInsercao.stationName,
-                cidade: cidade,
-                uf: uf,
-                timestamp: new Date().toISOString()
-            },
-            coordenada: coordenada
-        });
-        
-        console.log(`🔵 Novo ping AZUL criado: ${cidadeKey} (${novaInsercao.stationName})`);
-        
-    } catch (error) {
-        console.error(`❌ Erro ao atualizar ping de ${cidadeKey}:`, error);
-    }
+    console.log(`✨ ${pingsAzuis.size} pings AZUIS prontos!`);
 };
 
-// Função auxiliar para processar inserções recentes e atualizar pings
-const processarInsercoesRecentes = (insercoes) => {
-    if (!insercoes || insercoes.length === 0) return;
+/**
+ * 🌸 Animar ping AZUL → ROSA por 30 segundos quando inserção chega
+ * - Se já existe ping azul: converte para rosa + mostra legenda
+ * - Depois volta azul e oculta legenda
+ */
+const animarPingRosaPor30Segundos = (cidade, uf, emissora) => {
+    const cidadeKey = `${cidade}/${uf}`;
+    const pingData = pingsAzuis.get(cidadeKey);
+    
+    if (!pingData) {
+        console.warn(`⚠️ Ping não encontrado para: ${cidadeKey}`);
+        return;
+    }
 
-    // Agrupar por cidade, pegando a MAIS RECENTE de cada cidade
+    const element = pingData.elemento;
+    
+    // Limpar timer anterior se existe
+    if (timersRosa.has(cidadeKey)) {
+        clearTimeout(timersRosa.get(cidadeKey));
+    }
+    
+    // MUDAR: Azul → Rosa + Mostrar legenda
+    element.classList.remove('pinga-azul');
+    element.classList.add('pinga-rosa');
+    
+    // Preencher legenda
+    const labelDiv = element.querySelector('.pinga-legenda');
+    if (labelDiv) {
+        labelDiv.innerHTML = `
+            <div class="legenda-content">
+                <div class="legenda-emissora">${emissora}</div>
+                <div class="legenda-cidade">${cidade}</div>
+            </div>
+        `;
+        labelDiv.style.display = 'block';
+    }
+    
+    console.log(`🌸 Ping ROSA (30s): ${cidadeKey} - ${emissora}`);
+    
+    // VOLTAR: Rosa → Azul + Ocultar legenda após 30 segundos
+    const timerId = setTimeout(() => {
+        if (element && element.parentNode) {
+            element.classList.remove('pinga-rosa');
+            element.classList.add('pinga-azul');
+            
+            // Ocultar legenda
+            if (labelDiv) {
+                labelDiv.style.display = 'none';
+            }
+            
+            console.log(`🔵 Volta AZUL: ${cidadeKey}`);
+        }
+        timersRosa.delete(cidadeKey);
+    }, 30000); // 30 segundos
+    
+    timersRosa.set(cidadeKey, timerId);
+};
+
+/**
+ * 📡 Processar inserções recentes e animar pings rosa
+ * Cada inserção que chega → anima seu ping para rosa (30s) com legenda
+ */
+const processarInsercoesRecentes = (insercoesRecentes) => {
+    if (!insercoesRecentes || insercoesRecentes.length === 0) return;
+
+    console.log(`📡 ${insercoesRecentes.length} inserções chegaram - animando pings...`);
+    
+    // Agrupar por cidade, pegando a MAIS RECENTE
     const ultimaPorCidade = new Map();
     
-    insercoes.forEach(insercao => {
-        const cidade = insercao.city;
-        if (!cidade) return;
+    insercoesRecentes.forEach(insercao => {
+        if (!insercao.city) return;
         
-        const chave = `${cidade}/${insercao.uf}`;
-        
-        // Guardar apenas a inserção mais recente de cada cidade
+        const chave = `${insercao.city}/${insercao.uf}`;
         if (!ultimaPorCidade.has(chave)) {
             ultimaPorCidade.set(chave, insercao);
         }
     });
 
-    // Atualizar pings com as inserções mais recentes
+    // Animar cada ping para rosa (passando a emissora para a legenda)
     ultimaPorCidade.forEach((insercao, cidadeKey) => {
         const [cidade, uf] = cidadeKey.split('/');
-        atualizarPingaDaCidade(cidade, uf, insercao);
+        animarPingRosaPor30Segundos(cidade, uf, insercao.stationName);
     });
 };
 
 // Chamar isso sempre que buscar novas inserções
-const iniciarAlternanciaModoPings = () => {
-    // Nada mais a fazer aqui - os pings agora são gerenciados conforme novas inserções chegam
-    console.log(`✅ Sistema unificado de pings iniciado`);
+/**
+ * 🔵 NOVO: Carregar TODAS as cidades do dia e criar pings azuis
+ * Chamado UMA VEZ na inicialização do app
+ */
+let pingsAzuisJaCarregados = false;
+
+const inicializarPingsAzuisDoDia = async () => {
+    if (pingsAzuisJaCarregados) return;
+    
+    try {
+        console.log('🔵 Carregando todas as cidades do dia para criar pings azuis...');
+        const response = await fetch(`${CONFIG.API_BASE}/api/dashboard`);
+        if (!response.ok) {
+            console.warn('⚠️ Falha ao carregar dashboard inicial');
+            return;
+        }
+        
+        const data = await response.json();
+        if (data.insercoesRecentes && Array.isArray(data.insercoesRecentes)) {
+            const cidadesSet = new Set();
+            
+            data.insercoesRecentes.forEach(insercao => {
+                if (insercao.city && insercao.uf) {
+                    cidadesSet.add(JSON.stringify({ cidade: insercao.city, uf: insercao.uf }));
+                }
+            });
+            
+            const todasAsCidades = Array.from(cidadesSet).map(s => JSON.parse(s));
+            console.log(`📍 ${todasAsCidades.length} cidades encontradas`);
+            await criarPingsAzuisDosDia(todasAsCidades);
+            pingsAzuisJaCarregados = true;
+        }
+    } catch (error) {
+        console.error('❌ Erro ao inicializar pings azuis:', error);
+    }
 };
 
 /**
@@ -301,8 +377,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar mapa
     inicializarMapa();
 
-    // ⭐ NOVO: Iniciar ciclo de alternância entre Modo 1 e Modo 2
-    iniciarAlternanciaModoPings();
+    // ⭐ NOVO: Inicializar pings azuis permanentes para o dia
+    inicializarPingsAzuisDoDia();
 
     // Inicializar ticker de notícias
     renderizarTicker(['Monitorando inserções em tempo real...']);
@@ -355,6 +431,9 @@ async function cicloAtualizacaoRecorrente() {
                 console.log(`📥 Inserções recentes recebidas: ${tamanhoNovo} itens`);
                 renderizarListaInsercoes(data.insercoesRecentes);
                 atualizarTicker({ insercoesRecentes: data.insercoesRecentes });
+                
+                // 🎯 NOVO: Animar pings rosa quando inserções chegam (duração: 30s)
+                processarInsercoesRecentes(data.insercoesRecentes);
             }
         }
         

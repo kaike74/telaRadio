@@ -510,7 +510,7 @@ svg {
 }
 
 /* ========================================
-   NOVO SISTEMA: PINGA AZUL (Inserção mais recente)
+   NOVO SISTEMA: PINGA AZUL (Cidade ativa o dia todo)
    ======================================== */
 .pinga-azul .pinga-circle {
     background: #5A5FFF;
@@ -522,7 +522,7 @@ svg {
 }
 
 /* ========================================
-   NOVO SISTEMA: PINGA ROSA (Inserção anterior)
+   NOVO SISTEMA: PINGA ROSA (Feedback - 30 segundos quando inserção chega)
    ======================================== */
 .pinga-rosa .pinga-circle {
     background: #E03D99;
@@ -533,7 +533,7 @@ svg {
     border-color: #E03D99;
 }
 
-/* Legenda para ping rosa (emissora + cidade) */
+/* Legenda para ping rosa (emissora + cidade) - Aparece somente quando rosa */
 .pinga-legenda {
     position: absolute;
     top: 25px;
