@@ -201,6 +201,10 @@ const carregarPingsPermanentes = async (data) => {
             // Criar o pinga
             criarPinga(animacao, container, bounds);
             pingsPermanentes.set(pingaId, animacao);
+            
+            // 🔵 NOVO: Guardar dados completos para RESTAURAÇÃO em caso de desaparecimento
+            pingsPermanentesCompletos.set(pingaId, animacao);
+            
             criados++;
 
             // Pequeno delay entre requisições para não sobrecarregar
@@ -214,6 +218,39 @@ const carregarPingsPermanentes = async (data) => {
     console.log(`✅ Pings permanentes carregados: ${criados} criados, ${jaExistentes} já existentes, Total: ${pingsPermanentes.size}`);
 };
 
+// 🔴 RESTAURAÇÃO CONTÍNUA: Verificar e restaurar pings azuis que sumiram do DOM
+const iniciarMonitorPingsAzuis = () => {
+    setInterval(() => {
+        try {
+            const container = document.getElementById('animacoes-layer');
+            if (!container) return;
+            
+            const mapaContainer = document.getElementById('mapa-container');
+            if (!mapaContainer) return;
+            
+            let restaurados = 0;
+            const bounds = mapaContainer.getBoundingClientRect();
+            
+            // Verificar cada pinga permanente
+            for (const [pingaId, animacao] of pingsPermanentesCompletos.entries()) {
+                // ⚠️ CRÍTICO: Se o pinga DEVERIA estar aqui mas não está no DOM, RESTAURAR
+                const pingNoDOM = document.getElementById(pingaId);
+                if (!pingNoDOM) {
+                    console.warn(`🔴 ALERTA: Pinga azul desapareceu do DOM! Restaurando... ${pingaId}`);
+                    criarPinga(animacao, container, bounds);
+                    restaurados++;
+                }
+            }
+            
+            if (restaurados > 0) {
+                console.log(`🔵 ✅ ${restaurados} pings AZUIS restaurados (desapareciam do DOM)`);
+            }
+        } catch (error) {
+            console.error(`❌ Erro ao monitorar pings azuis:`, error);
+        }
+    }, 5000); // Verificar a cada 5 segundos
+};
+
 // Estado global
 let dashboardData = null;
 let animacoesAtivas = new Map();
@@ -222,6 +259,9 @@ let mapaViewBox = { width: 1000, height: 1000 };
 
 // ⭐ NOVO: Rastrear inserções já vistas para criar pingas apenas das novas
 let insercoesPreviasIds = new Set(); // Set com IDs das inserções da atualização anterior
+
+// 🔵 PROTEÇÃO: Mapa com dados completos dos pings azuis para RESTAURAR se sumirem do DOM
+let pingsPermanentesCompletos = new Map(); // {pingaId => {animacao data + coordenadas}}
 
 // 🔧 DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
 // ⚠️ GARANTIA DE MONOTONICICIDADE: Os valores NUNCA diminuem
@@ -353,6 +393,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ⭐ NOVO: Iniciar limpeza periódica de memória (a cada 30 minutos)
     iniciarLimpezaPeriodica();
+
+    // 🔵 NOVO: Iniciar monitor contínuo de pings azuis (restauração automática)
+    iniciarMonitorPingsAzuis();
 
     // 🎬 NOVO: Sistema de vídeos em background (auto-inicializa)
     console.log('🎬 Sistema de auto-play carregado. Vídeos rodando em background...');
