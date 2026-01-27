@@ -144,9 +144,9 @@ const iniciarAlternanciaModoPings = () => {
             console.log(`� Modo 2: Agregando TODAS as inserções do dia por cidade`);
             processarTodasInsercoesModo2(dashboardData);
         } else {
-            // Entrando em Modo 1: limpar pings agregados
-            console.log(`📡 Modo 1: Voltando ao modo ephemeral (pings desaparecem após 30s)`);
-            limparPingsAgregados();
+            // Entrando em Modo 1: NÃO limpar pings, deixar infinitos!
+            console.log(`📡 Modo 1: Pings permanecem na tela (infinitos com fadeout em 30s)`);
+            // ✅ REMOVIDO: limparPingsAgregados() - pings devem ficar para sempre
         }
         
         // Agendar próxima alternância
@@ -1309,12 +1309,28 @@ function criarPinga(animacao, container, bounds) {
             // 🔵 NOVO: Verificar se é pinga azul permanente
             const ehPingaAzul = animacao.origem === 'pinga-azul-permanente' || animacao.tipo === 'azul';
             
-            // ⭐ TODOS OS PINGS: NÃO REMOVEM NUNCA - INFINITOS!
-            // (Pings AZUIS e ROSA permanecem na tela indefinidamente)
+            // ⭐ PINGS AZUIS: INFINITOS SEM FADEOUT
+            // 🔴 PINGS ROSA: INFINITOS COM FADEOUT (desaparecem suavemente)
             if (ehPingaAzul) {
-                console.log(`🔵 Pinga AZUL criado - PERMANENTE (infinito): ${animacao.id}`);
+                console.log(`🔵 Pinga AZUL criado - PERMANENTE (infinito, sem fadeout): ${animacao.id}`);
             } else {
-                console.log(`🔴 Pinga ROSA criado - PERMANENTE (infinito): ${animacao.id}`);
+                console.log(`🔴 Pinga ROSA criado - PERMANENTE com FADEOUT suave: ${animacao.id}`);
+                
+                // Apenas ROSA: Aplicar fadeout suave após tempo
+                const DURACAO_FADEOUT_MS = 800;
+                
+                setTimeout(() => {
+                    const pingElement = document.getElementById(animacao.id);
+                    if (pingElement) {
+                        pingElement.classList.add('fade-out');
+                        setTimeout(() => {
+                            if (pingElement.parentNode) {
+                                pingElement.remove();
+                                animacoesAtivas.delete(animacao.id);
+                            }
+                        }, DURACAO_FADEOUT_MS);
+                    }
+                }, 600000); // 10 minutos antes de desaparecer (tempo bem longo)
             }
         }
         // ========================================
