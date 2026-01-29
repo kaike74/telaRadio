@@ -1477,11 +1477,19 @@ function criarPinga(animacao, container, bounds) {
         pinga.style.zIndex = '100';
         pinga.style.position = 'absolute';
 
-        // 🎯 MODO ÚNICO: Ambos os pings funcionando simultaneamente
-        // Todos os pings têm rótulo (horário, emissora, cidade)
+        // 🔵 PINGS AZUIS: Sem legenda (apenas o ponto)
+        // 🔴 PINGS ROSA: Com legenda (horário, emissora, cidade)
         
-        const emissora = animacao.dados.emissora.split('(')[0].trim();
-        pinga.innerHTML = `
+        if (ehPingaAzul) {
+            // Pings azuis: apenas o ponto, sem legenda
+            pinga.innerHTML = `
+        <div class="pinga-circle"></div>
+        <div class="pinga-ripple"></div>
+    `;
+        } else {
+            // Pings rosas: com legenda
+            const emissora = animacao.dados.emissora.split('(')[0].trim();
+            pinga.innerHTML = `
         <div class="pinga-circle"></div>
         <div class="pinga-ripple"></div>
         <div class="label-permanente">
@@ -1492,6 +1500,7 @@ function criarPinga(animacao, container, bounds) {
             </div>
         </div>
     `;
+        }
         
         container.appendChild(pinga);
         animacoesAtivas.set(animacao.id, pinga);
