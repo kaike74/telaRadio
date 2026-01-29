@@ -146,9 +146,10 @@ let temDadosRenderizados = false;
 // Garante máximo 1 ping azul por praça/cidade
 let pingAzulPorCidade = new Map(); // Key: "cidade/uf", Value: pingElementId
 
-// ⭐ RASTREAMENTO DE PINGS ROSAS
-// Armazena IDs dos pings rosas para limpeza periódica
+// ⭐ RASTREAMENTO DE PINGS ROSAS POR INSERÇÃO
+// Armazena IDs dos pings rosas para limpeza periódica e deduplicação
 let pingsRosas = new Map(); // Key: pingId, Value: { criadoEm: timestamp, elemento: element }
+let insercoesCriadas = new Set(); // Key: "emissora-cidade-hora" para deduplicar pings rosas
 
 // 🔧 DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
 // ⚠️ GARANTIA DE MONOTONICICIDADE: Os valores NUNCA diminuem
@@ -184,6 +185,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ⭐ NOVO: Iniciar limpeza periódica de memória (a cada 30 minutos)
     iniciarLimpezaPeriodica();
+    
+    // 🧹 NOVO: Iniciar limpeza de pings zumbis (a cada 10 segundos)
+    iniciarLimpezaPingsZumbis();
 
     // 🎬 NOVO: Sistema de vídeos em background (auto-inicializa)
     console.log('🎬 Sistema de auto-play carregado. Vídeos rodando em background...');
@@ -399,7 +403,48 @@ function limparPingsRosas() {
     });
     
     pingsRosas.clear();
+    insercoesCriadas.clear(); // Também limpar rastreamento de inserções
     console.log(`✅ Pings rosas limpos`);
+}
+
+/**
+ * 🧹 LIMPEZA PERIÓDICA DE PINGS ZUMBIS
+ * Remove pings rosas que deveriam ter sido deletados mas ainda estão lá
+ * Executa a cada 10 segundos
+ */
+function iniciarLimpezaPingsZumbis() {
+    setInterval(() => {
+        try {
+            const agora = Date.now();
+            const TEMPO_MAXIMO_MS = 35000; // Remover após 35 segundos (além do timeout de 30s)
+            
+            let removidos = 0;
+            
+            pingsRosas.forEach((dados, pingId) => {
+                const tempoDecorrido = agora - dados.criadoEm;
+                
+                // Se passou do tempo máximo, forçar remoção
+                if (tempoDecorrido > TEMPO_MAXIMO_MS) {
+                    try {
+                        if (dados.elemento && dados.elemento.parentElement) {
+                            dados.elemento.remove();
+                        }
+                        animacoesAtivas.delete(pingId);
+                        pingsRosas.delete(pingId);
+                        removidos++;
+                    } catch (err) {
+                        console.warn(`⚠️ Erro ao remover pinga zumbi ${pingId}:`, err.message);
+                    }
+                }
+            });
+            
+            if (removidos > 0) {
+                console.log(`🧹 Removidos ${removidos} pings rosas zumbis`);
+            }
+        } catch (err) {
+            console.warn(`⚠️ Erro em iniciarLimpezaPingsZumbis:`, err.message);
+        }
+    }, 10000); // Executar a cada 10 segundos
 }
 
 /**
@@ -1324,6 +1369,21 @@ async function buscarCoordenadaECriarPinga(insercao, pingaId, tickerId) {
 
 async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
     try {
+        // ⭐ DEDUPLICAÇÃO: Evitar criar pings rosas duplicados
+        // Se é uma inserção rosa (origem = 'ticker'), verifica se já existe
+        if (insercao && insercao.stationName && insercao.city) {
+            const chaveInsercao = `${insercao.stationName}-${insercao.city}-${insercao.hour}`;
+            
+            // Se já criamos um ping para esta inserção, pular
+            if (insercoesCriadas.has(chaveInsercao)) {
+                console.log(`↩️ PINGA DUPLICADO DESCARTADO: ${chaveInsercao}`);
+                return;
+            }
+            
+            // Marcar que criamos pinga para esta inserção
+            insercoesCriadas.add(chaveInsercao);
+        }
+        
         const coordStr = `${coordenada.lat.toFixed(4)}, ${coordenada.lng.toFixed(4)}`;
         console.log(`🎯 criarPingaComCoordenada: ${insercao.city} em (${coordStr})`);
         
@@ -1453,16 +1513,34 @@ function criarPinga(animacao, container, bounds) {
             const DURACAO_FADEOUT_MS = 800;
             const TEMPO_ROSA_MS = 30000; // 30 segundos
             
-            setTimeout(() => {
-                const pingElement = document.getElementById(animacao.id);
-                if (pingElement) {
-                    pingElement.classList.add('fade-out');
-                    setTimeout(() => {
-                        if (pingElement.parentNode) {
-                            pingElement.remove();
-                            animacoesAtivas.delete(animacao.id);
-                        }
-                    }, DURACAO_FADEOUT_MS);
+            const timeoutId = setTimeout(() => {
+                try {
+                    const pingElement = document.getElementById(animacao.id);
+                    if (pingElement) {
+                        console.log(`🗑️ Removendo ping rosa após timeout: ${animacao.id}`);
+                        
+                        // Tentar com fadeout CSS
+                        pingElement.classList.add('fade-out');
+                        
+                        // Forçar remoção após fadeout
+                        setTimeout(() => {
+                            if (pingElement && pingElement.parentNode) {
+                                pingElement.remove();
+                                animacoesAtivas.delete(animacao.id);
+                                pingsRosas.delete(animacao.id);
+                                console.log(`✅ Ping rosa removido: ${animacao.id}`);
+                            }
+                        }, DURACAO_FADEOUT_MS);
+                    }
+                } catch (err) {
+                    console.warn(`⚠️ Erro ao remover ping: ${err.message}`);
+                    // Forçar remoção mesmo se erro
+                    try {
+                        const elem = document.getElementById(animacao.id);
+                        if (elem) elem.remove();
+                        animacoesAtivas.delete(animacao.id);
+                        pingsRosas.delete(animacao.id);
+                    } catch (e) {}
                 }
             }, TEMPO_ROSA_MS); // 30 segundos para rosa desaparecer
         }
