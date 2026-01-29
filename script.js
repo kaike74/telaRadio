@@ -1159,7 +1159,7 @@ async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
                 horario: horarioFormatado,
                 campanha: insercao.campaign || 'N/A'
             },
-            origem: 'ticker'
+            origem: 'pinga-azul-permanente'  // 🔵 Pings do ticker são azuis permanentes
         };
 
         // Obter container do mapa
