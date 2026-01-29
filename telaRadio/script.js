@@ -312,31 +312,49 @@ async function carregarPingsAzuis() {
                 console.log(`✅ ${data.todasInsercoes.length} inserções do dia recebidas`);
                 console.log(`📍 ${data.debug?.comCidade || 0} com localização (cidade preenchida)`);
                 
-                // Criar pings azuis para cada inserção
-                data.todasInsercoes.forEach((insercao, idx) => {
-                    // Pular inserções sem cidade
-                    if (!insercao.city || insercao.city.trim() === '') {
-                        return;
+                // Filtrar apenas inserções com cidade
+                const insercoesCidade = data.todasInsercoes.filter(ins => ins.city && ins.city.trim() !== '');
+                console.log(`🔵 Processando ${insercoesCidade.length} inserções com cidade...`);
+                
+                // Processar em lotes de 5 para evitar overload da API
+                const batchSize = 5;
+                let processadas = 0;
+                
+                (async () => {
+                    for (let i = 0; i < insercoesCidade.length; i += batchSize) {
+                        const batch = insercoesCidade.slice(i, i + batchSize);
+                        
+                        // Processar lote em paralelo
+                        await Promise.all(batch.map((insercao, batchIdx) => {
+                            const animacao = {
+                                lat: 0,
+                                lng: 0,
+                                id: `pinga-azul-${i + batchIdx}`,
+                                tipo: 'azul',
+                                origem: 'pinga-azul-permanente',
+                                dados: {
+                                    emissora: insercao.stationName || 'N/A',
+                                    cidade: insercao.city || 'N/A',
+                                    horario: insercao.hour || 'N/A',
+                                    cliente: insercao.client || 'N/A',
+                                    campanha: insercao.campaign || 'N/A'
+                                }
+                            };
+                            
+                            return buscarCoordenadaECriarPingaAzul(animacao);
+                        }));
+                        
+                        processadas += batch.length;
+                        console.log(`⏳ ${processadas}/${insercoesCidade.length} pings azuis processados...`);
+                        
+                        // Delay entre lotes
+                        if (i + batchSize < insercoesCidade.length) {
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
                     }
                     
-                    const animacao = {
-                        lat: 0,
-                        lng: 0,
-                        id: `pinga-azul-${idx}`,
-                        tipo: 'azul',
-                        origem: 'pinga-azul-permanente',
-                        dados: {
-                            emissora: insercao.stationName || 'N/A',
-                            cidade: insercao.city || 'N/A',
-                            horario: insercao.hour || 'N/A',
-                            cliente: insercao.client || 'N/A',
-                            campanha: insercao.campaign || 'N/A'
-                        }
-                    };
-                    
-                    // Buscar coordenadas e criar ping
-                    buscarCoordenadaECriarPingaAzul(animacao);
-                });
+                    console.log(`✨ Total de ${processadas} pings azuis criados!`);
+                })();
             } else {
                 console.warn('⚠️ Resposta inválida de /api/insercoes/todas:', data);
             }
