@@ -603,8 +603,6 @@ function limparPingsRosas() {
     
     pingsRosas.clear();
     console.log(`✅ Pings rosas limpos`);
-        iniciarCicloAtualizacao();
-    }
 }
 
 /**
