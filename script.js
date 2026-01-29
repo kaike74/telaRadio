@@ -182,12 +182,123 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log(`🎯 Sistema de pings ativo: Modo único permanente (Rosa 30s + Azuis infinitos)`);
 
+    // 🔵 NOVO: Carregar pings azuis (todas as inserções do dia) na inicialização
+    carregarPingsAzuis();
+
     // Iniciar orquestração serializada
     iniciarCicloAtualizacao();
 });
 
 /**
- * 🔴 NOVO: Orquestração Serializada - Um único ciclo que evita race conditions
+ * � NOVO: Carregar PINGS AZUIS (todas as inserções do dia)
+ * Esses pings ficam na tela indefinidamente até a página ser recarregada
+ * Chamado na inicialização da página
+ */
+async function carregarPingsAzuis() {
+    try {
+        console.log('🔵 Carregando PINGS AZUIS (todas as inserções do dia)...');
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
+        
+        try {
+            const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/todas`, {
+                signal: controller.signal,
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.success && data.todasInsercoes) {
+                console.log(`✅ ${data.todasInsercoes.length} inserções do dia recebidas`);
+                console.log(`📍 ${data.debug?.comCidade || 0} com localização (cidade preenchida)`);
+                
+                // Criar pings azuis para cada inserção
+                data.todasInsercoes.forEach((insercao, idx) => {
+                    // Pular inserções sem cidade
+                    if (!insercao.city || insercao.city.trim() === '') {
+                        return;
+                    }
+                    
+                    const animacao = {
+                        lat: 0,
+                        lng: 0,
+                        id: `pinga-azul-${idx}`,
+                        tipo: 'azul',
+                        origem: 'pinga-azul-permanente',
+                        dados: {
+                            emissora: insercao.stationName || 'N/A',
+                            cidade: insercao.city || 'N/A',
+                            horario: insercao.hour || 'N/A',
+                            cliente: insercao.client || 'N/A',
+                            campanha: insercao.campaign || 'N/A'
+                        }
+                    };
+                    
+                    // Buscar coordenadas e criar ping
+                    buscarCoordenadaECriarPingaAzul(animacao);
+                });
+            } else {
+                console.warn('⚠️ Resposta inválida de /api/insercoes/todas:', data);
+            }
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    } catch (error) {
+        console.warn('⚠️ Erro ao carregar pings azuis:', error.message);
+    }
+}
+
+/**
+ * Buscar coordenada de uma inserção e criar ping azul
+ */
+async function buscarCoordenadaECriarPingaAzul(animacao) {
+    try {
+        // Buscar coordenada da cidade
+        const response = await fetch(`${CONFIG.API_BASE}/api/coordenada?cidade=${encodeURIComponent(animacao.dados.cidade)}`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        if (!response.ok) {
+            console.warn(`⚠️ Coordenada não encontrada para: ${animacao.dados.cidade}`);
+            return;
+        }
+        
+        const coordData = await response.json();
+        
+        // Verificar se a resposta tem sucesso e coordenadas
+        if (coordData.sucesso && coordData.coordenada) {
+            animacao.lat = parseFloat(coordData.coordenada.lat);
+            animacao.lng = parseFloat(coordData.coordenada.lng);
+            
+            // Obter container do mapa
+            const container = document.getElementById('animacoes-layer');
+            const mapaContainer = document.getElementById('mapa-container');
+            
+            if (container && mapaContainer) {
+                const bounds = mapaContainer.getBoundingClientRect();
+                // Criar o ping azul
+                criarPinga(animacao, container, bounds);
+                console.log(`✅ Pinga azul criada: ${animacao.dados.emissora} (${animacao.dados.cidade})`);
+            }
+        } else {
+            console.warn(`⚠️ Resposta inválida da API coordenada para: ${animacao.dados.cidade}`, coordData);
+        }
+    } catch (error) {
+        console.warn(`⚠️ Erro ao buscar coordenada para ${animacao.dados.cidade}:`, error.message);
+    }
+}
+
+/**
+ * �🔴 NOVO: Orquestração Serializada - Um único ciclo que evita race conditions
  * Funciona para PC e TV igualmente
  */
 async function iniciarCicloAtualizacao() {
