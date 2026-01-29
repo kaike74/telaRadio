@@ -141,6 +141,14 @@ let mapaViewBox = { width: 1000, height: 1000 };
 // ⭐ NOVO: Rastrear inserções já vistas para criar pingas apenas das novas
 let insercoesPreviasIds = new Set(); // Set com IDs das inserções da atualização anterior
 
+// ⭐ RASTREAMENTO DE PINGS AZUIS POR CIDADE
+// Garante máximo 1 ping azul por praça/cidade
+let pingAzulPorCidade = new Map(); // Key: "cidade/uf", Value: pingElementId
+
+// ⭐ RASTREAMENTO DE PINGS ROSAS
+// Armazena IDs dos pings rosas para limpeza periódica
+let pingsRosas = new Map(); // Key: pingId, Value: { criadoEm: timestamp, elemento: element }
+
 //  DETECÇÃO DE MUDANÇAS - Rastrear valores anteriores das métricas
 // ⚠️ GARANTIA DE MONOTONICICIDADE: Os valores NUNCA diminuem
 let metricasAnteriores = {
@@ -289,6 +297,10 @@ document.addEventListener('DOMContentLoaded', () => {
 async function carregarPingsAzuis() {
     console.log('🔵🔵🔵 FUNÇÃO carregarPingsAzuis() INICIADA 🔵🔵🔵');
     
+    // Limpar pings rosas ANTES de carregar azuis
+    // Isso garante que não acumulem na tela
+    limparPingsRosas();
+    
     try {
         const apiUrl = `${CONFIG.API_BASE}/api/insercoes/todas`;
         console.log(`🔵 Fetching: ${apiUrl}`);
@@ -341,12 +353,22 @@ async function carregarPingsAzuis() {
             // Processar cada inserção do lote
             for (const insercao of batch) {
                 try {
+                    // ⭐ DEDUPLICAÇÃO: Verificar se já existe pinga azul para esta cidade
+                    const chaveCity = `${insercao.city}/${insercao.uf}`;
+                    
+                    if (pingAzulPorCidade.has(chaveCity)) {
+                        console.log(`↩️ Pulando - já existe pinga azul para ${chaveCity}`);
+                        continue; // Pular para próxima inserção
+                    }
+                    
                     const animacao = {
                         lat: 0,
                         lng: 0,
                         id: `pinga-azul-${processadas}`,
                         tipo: 'azul',
                         origem: 'pinga-azul-permanente',
+                        cidade: insercao.city,
+                        uf: insercao.uf,
                         dados: {
                             emissora: insercao.stationName || 'N/A',
                             cidade: insercao.city || 'N/A',
@@ -358,6 +380,10 @@ async function carregarPingsAzuis() {
                     };
                     
                     await buscarCoordenadaECriarPingaAzul(animacao);
+                    
+                    // ⭐ REGISTRAR: Marcar que esta cidade já tem pinga azul
+                    pingAzulPorCidade.set(chaveCity, animacao.id);
+                    
                     processadas++;
                 } catch (err) {
                     console.error(`🔵 Erro ao processar inserção: ${err.message}`);
@@ -552,6 +578,31 @@ async function iniciarCicloAtualizacao() {
         console.error('❌ Erro ao iniciar ciclo:', erro);
         // Tenta novamente em 5 segundos
         await aguardar(5000);
+        iniciarCicloAtualizacao();
+    }
+}
+
+/**
+ * 🔴 LIMPAR PINGS ROSAS
+ * Remove todos os pings rosas da tela (deixa apenas azuis)
+ * Usado antes de carregar novos pings para evitar acúmulo
+ */
+function limparPingsRosas() {
+    console.log(`🧹 Limpando pings rosas... (${pingsRosas.size} a remover)`);
+    
+    pingsRosas.forEach((dados, pingId) => {
+        try {
+            if (dados.elemento && dados.elemento.parentElement) {
+                dados.elemento.remove();
+            }
+            animacoesAtivas.delete(pingId);
+        } catch (err) {
+            console.warn(`⚠️ Erro ao remover ping ${pingId}:`, err.message);
+        }
+    });
+    
+    pingsRosas.clear();
+    console.log(`✅ Pings rosas limpos`);
         iniciarCicloAtualizacao();
     }
 }
@@ -1327,6 +1378,14 @@ function criarPinga(animacao, container, bounds) {
         
         // 🔵 Detectar se é pinga azul permanente
         const ehPingaAzul = animacao.origem === 'pinga-azul-permanente' || animacao.tipo === 'azul';
+        
+        // 🔴 Se for pinga rosa, registrar para limpeza posterior
+        if (!ehPingaAzul) {
+            pingsRosas.set(animacao.id, {
+                criadoEm: Date.now(),
+                elemento: pinga
+            });
+        }
         
         // ⭐ PINGS AZUIS: INFINITOS SEM FADEOUT
         // 🔴 PINGS ROSA: DESAPARECEM APÓS 30 SEGUNDOS
