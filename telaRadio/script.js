@@ -927,7 +927,7 @@ function renderizarGraficoEmissoras(topEmissoras) {
 
     console.log(`📊 renderizarGraficoEmissoras() recebeu ${topEmissoras.length} emissoras:`);
     topEmissoras.slice(0, 5).forEach((e, i) => {
-        console.log(`   [${i}] ${e.emissora} - campanhas: ${e.numerosCampanhasAtivas}`);
+        console.log(`   [${i}] ${e.cidade}/${e.uf} - ${e.emissora} - campanhas: ${e.numerosCampanhasAtivas}`);
     });
 
     // Usar "numerosCampanhasAtivas" como valor principal
@@ -936,11 +936,13 @@ function renderizarGraficoEmissoras(topEmissoras) {
     const graficoHTML = topEmissoras.slice(0, 8).map(emissora => {
         const valor = emissora.numerosCampanhasAtivas || 0;
         const larguraPercentual = (valor / maxValor) * 100;
-        const nomeResumido = truncarTexto(emissora.emissora, 40);
+        const praca = emissora.cidade && emissora.uf ? `${emissora.cidade}/${emissora.uf}` : '';
+        const nomeResumido = truncarTexto(emissora.emissora, 35);
+        const labelCompleta = praca ? `${praca} - ${emissora.emissora}` : emissora.emissora;
 
         return `
             <div class="grafico-barra">
-                <div class="grafico-label" title="${emissora.emissora}">${nomeResumido}</div>
+                <div class="grafico-label" title="${labelCompleta}">${praca ? `<strong>${praca}</strong> - ${nomeResumido}` : nomeResumido}</div>
                 <div class="grafico-bar-container">
                     <div class="grafico-bar" style="width: ${larguraPercentual}%">
                         <span class="grafico-valor">${valor}</span>
