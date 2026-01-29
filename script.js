@@ -195,82 +195,95 @@ document.addEventListener('DOMContentLoaded', () => {
  * Chamado na inicialização da página
  */
 async function carregarPingsAzuis() {
+    console.log('🔵🔵🔵 FUNÇÃO carregarPingsAzuis() INICIADA 🔵🔵🔵');
+    
     try {
-        console.log('🔵 Carregando PINGS AZUIS (todas as inserções do dia)...');
+        const apiUrl = `${CONFIG.API_BASE}/api/insercoes/todas`;
+        console.log(`🔵 Fetching: ${apiUrl}`);
         
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos timeout
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
         
-        try {
-            const response = await fetch(`${CONFIG.API_BASE}/api/insercoes/todas`, {
-                signal: controller.signal,
-                method: 'GET',
-                headers: { 'Accept': 'application/json' }
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const data = await response.json();
-            
-            if (data.success && data.todasInsercoes) {
-                console.log(`✅ ${data.todasInsercoes.length} inserções do dia recebidas`);
-                console.log(`📍 ${data.debug?.comCidade || 0} com localização (cidade preenchida)`);
-                
-                // Filtrar apenas inserções com cidade
-                const insercoesCidade = data.todasInsercoes.filter(ins => ins.city && ins.city.trim() !== '');
-                console.log(`🔵 Processando ${insercoesCidade.length} inserções com cidade...`);
-                
-                // Processar em lotes de 5 para evitar overload da API
-                const batchSize = 5;
-                let processadas = 0;
-                
-                (async () => {
-                    for (let i = 0; i < insercoesCidade.length; i += batchSize) {
-                        const batch = insercoesCidade.slice(i, i + batchSize);
-                        
-                        // Processar lote em paralelo
-                        await Promise.all(batch.map((insercao, batchIdx) => {
-                            const animacao = {
-                                lat: 0,
-                                lng: 0,
-                                id: `pinga-azul-${i + batchIdx}`,
-                                tipo: 'azul',
-                                origem: 'pinga-azul-permanente',
-                                dados: {
-                                    emissora: insercao.stationName || 'N/A',
-                                    cidade: insercao.city || 'N/A',
-                                    horario: insercao.hour || 'N/A',
-                                    cliente: insercao.client || 'N/A',
-                                    campanha: insercao.campaign || 'N/A'
-                                }
-                            };
-                            
-                            return buscarCoordenadaECriarPingaAzul(animacao);
-                        }));
-                        
-                        processadas += batch.length;
-                        console.log(`⏳ ${processadas}/${insercoesCidade.length} pings azuis processados...`);
-                        
-                        // Delay entre lotes
-                        if (i + batchSize < insercoesCidade.length) {
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                        }
-                    }
-                    
-                    console.log(`✨ Total de ${processadas} pings azuis criados!`);
-                })();
-            } else {
-                console.warn('⚠️ Resposta inválida de /api/insercoes/todas:', data);
-            }
-        } finally {
-            clearTimeout(timeoutId);
+        console.log(`🔵 Response status: ${response.status}`);
+        
+        if (!response.ok) {
+            console.error(`🔵 HTTP Error: ${response.status} ${response.statusText}`);
+            return;
         }
+        
+        const data = await response.json();
+        console.log(`🔵 Data received:`, data);
+        
+        if (!data.success) {
+            console.error(`🔵 API returned success: false`);
+            return;
+        }
+        
+        if (!data.todasInsercoes || !Array.isArray(data.todasInsercoes)) {
+            console.error(`🔵 data.todasInsercoes is not an array`, data.todasInsercoes);
+            return;
+        }
+        
+        console.log(`✅ ${data.todasInsercoes.length} inserções do dia recebidas`);
+        
+        // Filtrar apenas inserções com cidade
+        const insercoesCidade = data.todasInsercoes.filter(ins => ins.city && ins.city.trim() !== '');
+        console.log(`🔵 ${insercoesCidade.length} inserções com cidade`);
+        
+        if (insercoesCidade.length === 0) {
+            console.warn('⚠️ Nenhuma inserção com cidade para criar pings');
+            return;
+        }
+        
+        // Processar em lotes de 5
+        const batchSize = 5;
+        let processadas = 0;
+        
+        for (let i = 0; i < insercoesCidade.length; i += batchSize) {
+            const batch = insercoesCidade.slice(i, i + batchSize);
+            
+            console.log(`🔵 Processando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(insercoesCidade.length / batchSize)}`);
+            
+            // Processar cada inserção do lote
+            for (const insercao of batch) {
+                try {
+                    const animacao = {
+                        lat: 0,
+                        lng: 0,
+                        id: `pinga-azul-${processadas}`,
+                        tipo: 'azul',
+                        origem: 'pinga-azul-permanente',
+                        dados: {
+                            emissora: insercao.stationName || 'N/A',
+                            cidade: insercao.city || 'N/A',
+                            uf: insercao.uf || 'N/A',
+                            horario: insercao.hour || 'N/A',
+                            cliente: insercao.client || 'N/A',
+                            campanha: insercao.campaign || 'N/A'
+                        }
+                    };
+                    
+                    await buscarCoordenadaECriarPingaAzul(animacao);
+                    processadas++;
+                } catch (err) {
+                    console.error(`🔵 Erro ao processar inserção: ${err.message}`);
+                }
+            }
+            
+            console.log(`⏳ ${processadas}/${insercoesCidade.length} pings azuis processados...`);
+            
+            // Delay entre lotes
+            if (i + batchSize < insercoesCidade.length) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+        
+        console.log(`✨ Total de ${processadas} pings azuis criados!`);
     } catch (error) {
-        console.warn('⚠️ Erro ao carregar pings azuis:', error.message);
+        console.error('❌ ERRO CRÍTICO em carregarPingsAzuis():', error);
+        console.error('Stack:', error.stack);
     }
 }
 
