@@ -1448,7 +1448,12 @@ async function criarPingaComCoordenada(insercao, pingaId, coordenada) {
 function criarPinga(animacao, container, bounds) {
     try {
         const pinga = document.createElement('div');
-        pinga.className = 'pinga';
+        
+        // 🔵 Detectar se é pinga azul permanente ANTES de criar
+        const ehPingaAzul = animacao.origem === 'pinga-azul-permanente' || animacao.tipo === 'azul';
+        
+        // ⭐ Aplicar classe CSS apropriada
+        pinga.className = ehPingaAzul ? 'pinga pinga-modo-2' : 'pinga';
         pinga.id = animacao.id;
 
         // Converter coordenadas geográficas para pixels do SVG
@@ -1491,10 +1496,7 @@ function criarPinga(animacao, container, bounds) {
         container.appendChild(pinga);
         animacoesAtivas.set(animacao.id, pinga);
         
-        // 🔵 Detectar se é pinga azul permanente
-        const ehPingaAzul = animacao.origem === 'pinga-azul-permanente' || animacao.tipo === 'azul';
-        
-        // 🔴 Se for pinga rosa, registrar para limpeza posterior
+        //  Se for pinga rosa, registrar para limpeza posterior
         if (!ehPingaAzul) {
             pingsRosas.set(animacao.id, {
                 criadoEm: Date.now(),
