@@ -276,8 +276,18 @@ async function buscarCoordenadaECriarPingaAzul(animacao) {
         
         // Verificar se a resposta tem sucesso e coordenadas
         if (coordData.sucesso && coordData.coordenada) {
-            animacao.lat = parseFloat(coordData.coordenada.lat);
-            animacao.lng = parseFloat(coordData.coordenada.lng);
+            // CORRIGIR: coordenada é um objeto com lat e lng
+            const lat = typeof coordData.coordenada.lat === 'string' 
+                ? parseFloat(coordData.coordenada.lat)
+                : parseFloat(coordData.coordenada.lat);
+            const lng = typeof coordData.coordenada.lng === 'string'
+                ? parseFloat(coordData.coordenada.lng)
+                : parseFloat(coordData.coordenada.lng);
+            
+            animacao.lat = lat;
+            animacao.lng = lng;
+            
+            console.log(`✅ Coordenadas obtidas para ${animacao.dados.cidade}: lat=${lat}, lng=${lng}`);
             
             // Obter container do mapa
             const container = document.getElementById('animacoes-layer');
@@ -288,6 +298,8 @@ async function buscarCoordenadaECriarPingaAzul(animacao) {
                 // Criar o ping azul
                 criarPinga(animacao, container, bounds);
                 console.log(`✅ Pinga azul criada: ${animacao.dados.emissora} (${animacao.dados.cidade})`);
+            } else {
+                console.warn(`⚠️ Containers não encontrados - container: ${!!container}, mapaContainer: ${!!mapaContainer}`);
             }
         } else {
             console.warn(`⚠️ Resposta inválida da API coordenada para: ${animacao.dados.cidade}`, coordData);
