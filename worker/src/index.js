@@ -75,6 +75,8 @@ export default {
                 response = await handleDashboard(env, corsHeaders);
             } else if (url.pathname === "/api/insercoes/recentes") {
                 response = await handleInsercoesRecentes(env, corsHeaders);
+            } else if (url.pathname === "/api/insercoes/todas") {
+                response = await handleTodasInsercoes(env, corsHeaders);
             } else if (url.pathname === "/api/coordenada") {
                 response = await handleCoordenada(env, corsHeaders, url);
             } else if (url.pathname === "/api/logs/insercoes") {
@@ -92,7 +94,7 @@ export default {
             } else {
                 response = new Response(JSON.stringify({
                     error: "Endpoint não encontrado",
-                    endpoints: ["/api/health", "/api/dashboard", "/api/insercoes/recentes", "/api/coordenada", "/api/logs/insercoes", "/api/videos", "/api/videos/check", "/api/videos/test", "/api/video/:id"]
+                    endpoints: ["/api/health", "/api/dashboard", "/api/insercoes/recentes", "/api/insercoes/todas", "/api/coordenada", "/api/logs/insercoes", "/api/videos", "/api/videos/check", "/api/videos/test", "/api/video/:id"]
                 }), {
                     status: 404,
                     headers: { "Content-Type": "application/json" }
@@ -448,6 +450,132 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             success: false,
             error: error.message,
             insercoesRecentes: [],
+            timestamp: new Date().toISOString()
+        }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+    }
+}
+
+/**
+ * 🔵 NOVO ENDPOINT: Buscar TODAS as inserções do dia
+ * Usado para criar os PINGS AZUIS (que ficam na tela indefinidamente)
+ * Diferente de /api/insercoes/recentes que é filtrado
+ */
+async function handleTodasInsercoes(env, corsHeaders) {
+    console.log("🔵 GET /api/insercoes/todas");
+
+    // Usar horário REAL de Brasília
+    const agora = new Date();
+    const offsetBrasilia = -3 * 60;
+    const agoraBrasilia = new Date(agora.getTime() + offsetBrasilia * 60 * 1000);
+    const dataHoje = agoraBrasilia.toISOString().split('T')[0];
+    const horaAtual = String(agoraBrasilia.getHours()).padStart(2, '0');
+    const minutoAtual = String(agoraBrasilia.getMinutes()).padStart(2, '0');
+    
+    // 🔍 DEBUG: Mostrar o tempo que estamos usando
+    const horaFormatada = horaAtual + ':' + minutoAtual + ':' + String(agoraBrasilia.getSeconds()).padStart(2, '0');
+    console.log(`🕐 TEMPO BRASÍLIA: ${dataHoje} ${horaFormatada}`);
+
+    try {
+        // ⭐ ESTRATÉGIA: Usar cache com TTL curto (30 segundos)
+        const cacheKey = `insercoes-todas-${dataHoje}`;
+        const cacheTTL = 30; // segundos
+        
+        // Tentar ler do cache
+        let cachedData = null;
+        try {
+            const cached = await env.CACHE.get(cacheKey);
+            if (cached) {
+                cachedData = JSON.parse(cached);
+                const cacheAge = (Date.now() - cachedData.cacheTime) / 1000;
+                if (cacheAge < cacheTTL) {
+                    console.log(`📦 Retornando TODAS as inserções do CACHE (${cacheAge.toFixed(1)}s de idade)`);
+                    return new Response(JSON.stringify(cachedData.data), {
+                        headers: { ...corsHeaders, "Content-Type": "application/json" }
+                    });
+                }
+            }
+        } catch (cacheErr) {
+            console.log(`ℹ️ Cache não disponível: ${cacheErr.message}`);
+        }
+        
+        console.log(`📡 Buscando TODAS as inserções do dia da API Audiency...`);
+        
+        // Buscar campanhas
+        const todasCampanhas = await buscarTodasCampanhas();
+        const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
+        
+        console.log(`📊 ${todasCampanhas.length} campanhas totais, ${campanhasAtivas.length} ativas`);
+        
+        if (campanhasAtivas.length === 0) {
+            console.warn(`⚠️ NENHUMA CAMPANHA ATIVA! Retornando array vazio`);
+        }
+        
+        // Construir resposta
+        const resultado_busca = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
+        let todasInsercoes = resultado_busca.todasInsercoes || [];
+        
+        console.log(`📊 Total de inserções do dia: ${todasInsercoes.length}`);
+        console.log(`📍 Inserções com cidade preenchida: ${todasInsercoes.filter(i => i.city).length}`);
+        console.log(`❌ Inserções SEM cidade: ${todasInsercoes.filter(i => !i.city).length}`);
+        
+        // Garantir que é array
+        if (!Array.isArray(todasInsercoes)) {
+            todasInsercoes = [];
+        }
+        
+        // 🔵 IMPORTANTE: Retornar TODAS as inserções (não filtrado)
+        // Essas vão virar os PINGS AZUIS no frontend
+        
+        // Construir resposta
+        const response = {
+            success: true,
+            timestamp: new Date().toISOString(),
+            horaBrasilia: `${horaAtual}:${minutoAtual}`,
+            todasInsercoes: todasInsercoes,
+            debug: {
+                totalInsercoes: todasInsercoes.length,
+                comCidade: todasInsercoes.filter(i => i.city).length,
+                semCidade: todasInsercoes.filter(i => !i.city).length,
+                origem: 'api-audiency-completa',
+                cached: false
+            },
+            cacheTime: Date.now()
+        };
+        
+        if (todasInsercoes.length > 0) {
+            console.log(`\n📋 PRIMEIRAS 3 INSERÇÕES:`);
+            todasInsercoes.slice(0, 3).forEach((ins, i) => {
+                console.log(`   [${i+1}] ${ins.hour} - ${ins.stationName} (${ins.city})`);
+            });
+        }
+        
+        // 💾 Salvar no cache para próximas requisições
+        try {
+            await env.CACHE.put(cacheKey, JSON.stringify({ data: response, cacheTime: Date.now() }));
+            console.log(`💾 Dados salvos em cache por 30 segundos`);
+        } catch (cacheErr) {
+            console.log(`⚠️ Não conseguiu salvar cache: ${cacheErr.message}`);
+        }
+        
+        return new Response(JSON.stringify(response), {
+            headers: {
+                ...corsHeaders,
+                "Content-Type": "application/json",
+                "Cache-Control": "public, max-age=30"
+            }
+        });
+
+    } catch (error) {
+        console.error(`❌ ERRO em handleTodasInsercoes: ${error.message}`);
+        console.error(`   Stack: ${error.stack}`);
+        
+        return new Response(JSON.stringify({
+            success: false,
+            error: error.message,
+            todasInsercoes: [],
             timestamp: new Date().toISOString()
         }), {
             status: 500,
@@ -1058,6 +1186,12 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
     
     const emissorasTopMap = new Map();
     
+    // 🔵 NOVO: Criar mapa rápido das emissoras programadas para buscar cidade/UF
+    const emissorasProgramadasMap = new Map();
+    emissorasProgramadas.forEach(em => {
+        emissorasProgramadasMap.set(em.name, em);
+    });
+    
     // Iterar sobre as inserções reais para contar campanhas por emissora
     insercoes.forEach(insercao => {
         const emissoraKey = insercao.stationName;
@@ -1068,20 +1202,34 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
         }
         
         if (!emissorasTopMap.has(emissoraKey)) {
+            // 🔵 NOVO: Tentar buscar dados da emissora em emissorasProgramadas PRIMEIRO
+            const emissoraProgramada = emissorasProgramadasMap.get(emissoraKey);
+            
             emissorasTopMap.set(emissoraKey, {
                 name: emissoraKey,
+                city: emissoraProgramada?.city || insercao.city || '',
+                uf: emissoraProgramada?.uf || insercao.uf || '',
                 numerosCampanhasAtivas: new Set()
             });
         }
         
         const emissoraData = emissorasTopMap.get(emissoraKey);
         emissoraData.numerosCampanhasAtivas.add(campanhaKey); // Adiciona campanha ao Set (sem duplicar)
+        // Atualizar cidade e UF se ainda não temos (pega da primeira com dados)
+        if (!emissoraData.city && insercao.city) {
+            emissoraData.city = insercao.city;
+        }
+        if (!emissoraData.uf && insercao.uf) {
+            emissoraData.uf = insercao.uf;
+        }
     });
 
     // Emissoras com maior número de campanhas (baseado em inserções reais)
     const topEmissoras = Array.from(emissorasTopMap.values())
         .map(e => ({
             emissora: e.name,
+            cidade: e.city,
+            uf: e.uf,
             numerosCampanhasAtivas: e.numerosCampanhasAtivas.size
         }))
         .sort((a, b) => b.numerosCampanhasAtivas - a.numerosCampanhasAtivas)
@@ -1089,7 +1237,7 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
 
     console.log(`📊 Emissoras com maior número de campanhas ativas (BASEADO EM INSERÇÕES REAIS - ${emissorasTopMap.size} emissoras com inserções):`);
     topEmissoras.slice(0, 5).forEach((e, i) => {
-        console.log(`   ${i+1}. ${e.emissora} - ${e.numerosCampanhasAtivas} campanhas`);
+        console.log(`   ${i+1}. ${e.cidade}/${e.uf} - ${e.emissora} - ${e.numerosCampanhasAtivas} campanhas`);
     });
     
     // ===== 2. CIDADES COM MAIOR NÚMERO DE EMISSORAS ATIVAS =====
