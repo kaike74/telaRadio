@@ -1509,35 +1509,55 @@ function criarPinga(animacao, container, bounds) {
         } else {
             console.log(`🔴 Pinga ROSA criado - DESAPARECE após 30 segundos: ${animacao.id}`);
             
-            // Apenas ROSA: Aplicar fadeout suave após 30 segundos
-            const DURACAO_FADEOUT_MS = 800;
+            // Apenas ROSA: Forçar remoção após 30 segundos
             const TEMPO_ROSA_MS = 30000; // 30 segundos
             
             const timeoutId = setTimeout(() => {
                 try {
+                    console.log(`🗑️ COMEÇANDO REMOÇÃO: ${animacao.id}`);
                     const pingElement = document.getElementById(animacao.id);
                     if (pingElement) {
-                        console.log(`🗑️ Removendo ping rosa após timeout: ${animacao.id}`);
-                        
-                        // Tentar com fadeout CSS
+                        // Passo 1: Aplicar classe CSS para fade-out visual
                         pingElement.classList.add('fade-out');
+                        console.log(`🎬 Classe fade-out aplicada: ${animacao.id}`);
                         
-                        // Forçar remoção após fadeout
+                        // Passo 2: Esperar animação terminar
                         setTimeout(() => {
-                            if (pingElement && pingElement.parentNode) {
-                                pingElement.remove();
-                                animacoesAtivas.delete(animacao.id);
-                                pingsRosas.delete(animacao.id);
-                                console.log(`✅ Ping rosa removido: ${animacao.id}`);
+                            try {
+                                // Passo 3: Forçar display:none
+                                if (pingElement.parentNode) {
+                                    pingElement.style.display = 'none';
+                                    console.log(`👻 Display none aplicado: ${animacao.id}`);
+                                    
+                                    // Passo 4: Remover do DOM completamente
+                                    setTimeout(() => {
+                                        if (pingElement.parentNode) {
+                                            pingElement.remove();
+                                            animacoesAtivas.delete(animacao.id);
+                                            pingsRosas.delete(animacao.id);
+                                            console.log(`✅ PING ROSA REMOVIDO: ${animacao.id}`);
+                                        }
+                                    }, 100); // Pequeno delay para garantir
+                                }
+                            } catch (err) {
+                                console.error(`❌ Erro no passo 3/4: ${err.message}`);
+                                // Forçar remoção mesmo assim
+                                try {
+                                    if (pingElement.parentNode) pingElement.remove();
+                                    animacoesAtivas.delete(animacao.id);
+                                    pingsRosas.delete(animacao.id);
+                                } catch (e) {}
                             }
-                        }, DURACAO_FADEOUT_MS);
+                        }, 800); // Aguardar animação CSS (DURACAO_FADEOUT_MS)
+                    } else {
+                        console.warn(`⚠️ Elemento não encontrado no DOM: ${animacao.id}`);
                     }
                 } catch (err) {
-                    console.warn(`⚠️ Erro ao remover ping: ${err.message}`);
+                    console.error(`❌ ERRO em remoção de ping: ${err.message}`);
                     // Forçar remoção mesmo se erro
                     try {
                         const elem = document.getElementById(animacao.id);
-                        if (elem) elem.remove();
+                        if (elem && elem.parentNode) elem.remove();
                         animacoesAtivas.delete(animacao.id);
                         pingsRosas.delete(animacao.id);
                     } catch (e) {}
