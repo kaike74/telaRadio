@@ -134,29 +134,12 @@ const MODO_TEMPOS = {
 };
 
 const iniciarAlternanciaModoPings = () => {
-    const alternarModo = () => {
-        const modoAnterior = modoAtualPings;
-        modoAtualPings = modoAtualPings === 1 ? 2 : 1;
-        console.log(`🔄 ALTERNÂNCIA DE MODOS: Entrando em MODO ${modoAtualPings}`);
-        
-        if (modoAtualPings === 2) {
-            // Entrando em Modo 2: processar TODAS as inserções do dia por cidade
-            console.log(`� Modo 2: Agregando TODAS as inserções do dia por cidade`);
-            processarTodasInsercoesModo2(dashboardData);
-        } else {
-            // Entrando em Modo 1: NÃO limpar pings, deixar infinitos!
-            console.log(`📡 Modo 1: Pings permanecem na tela (infinitos com fadeout em 30s)`);
-            // ✅ REMOVIDO: limparPingsAgregados() - pings devem ficar para sempre
-        }
-        
-        // Agendar próxima alternância
-        timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[modoAtualPings]);
-    };
-    
-    // Iniciar primeira alternância (começa em Modo 1 por 60s)
-    timerAlternancia = setTimeout(alternarModo, MODO_TEMPOS[1]);
-    console.log(`⏱️ Ciclo de modos iniciado: Modo 1 (60s) → Modo 2 (45s) → Repetir`);
+    // ✅ DESABILITADO: Sistema de alternância foi removido
+    // Agora: Modo 1 permanente - Pings ROSA desaparecem em 30s, Pings AZUIS ficam infinitos
+    console.log(`✅ Modos de alternância DESABILITADOS - Usando modo único permanente`);
 };
+
+// 🧹 Limpar função orfã - não mais necessário
 
 /**
  * 🎯 MODO 2: Processa TODAS as inserções do dia e agrupa por cidade
@@ -395,8 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicializar mapa
     inicializarMapa();
 
-    // ⭐ NOVO: Iniciar ciclo de alternância entre Modo 1 e Modo 2
-    iniciarAlternanciaModoPings();
+    // ✅ DESABILITADO: Alternância de modos foi removida
+    // iniciarAlternanciaModoPings(); // Agora usa modo único permanente
+    console.log(`🎯 Sistema de pings ativo: Modo 1 permanente (Rosa 30s + Azuis infinitos)`);
 
     // Inicializar ticker de notícias
     renderizarTicker(['Monitorando inserções em tempo real...']);
@@ -1314,10 +1298,11 @@ function criarPinga(animacao, container, bounds) {
             if (ehPingaAzul) {
                 console.log(`🔵 Pinga AZUL criado - PERMANENTE (infinito, sem fadeout): ${animacao.id}`);
             } else {
-                console.log(`🔴 Pinga ROSA criado - PERMANENTE com FADEOUT suave: ${animacao.id}`);
+                console.log(`🔴 Pinga ROSA criado - DESAPARECE após 30 segundos: ${animacao.id}`);
                 
-                // Apenas ROSA: Aplicar fadeout suave após tempo
+                // Apenas ROSA: Aplicar fadeout suave após 30 segundos
                 const DURACAO_FADEOUT_MS = 800;
+                const TEMPO_ROSA_MS = 30000; // 30 segundos
                 
                 setTimeout(() => {
                     const pingElement = document.getElementById(animacao.id);
@@ -1330,7 +1315,7 @@ function criarPinga(animacao, container, bounds) {
                             }
                         }, DURACAO_FADEOUT_MS);
                     }
-                }, 600000); // 10 minutos antes de desaparecer (tempo bem longo)
+                }, TEMPO_ROSA_MS); // 30 segundos para rosa desaparecer
             }
         }
         // ========================================
