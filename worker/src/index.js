@@ -43,7 +43,14 @@ const corsHeaders = {
 };
 
 // Middleware para adicionar CORS a TODAS as respostas
+// Middleware para adicionar CORS a TODAS as respostas
 function adicionarCORS(response) {
+    if (!response) {
+        return new Response("Erro interno: Resposta vazia", {
+            status: 500,
+            headers: corsHeaders
+        });
+    }
     const novaResponse = new Response(response.body, response);
     Object.entries(corsHeaders).forEach(([key, value]) => {
         novaResponse.headers.set(key, value);
@@ -62,7 +69,7 @@ export default {
 
         try {
             let response;
-            
+
             // Routing
             if (url.pathname === "/api/health") {
                 response = new Response(JSON.stringify({
@@ -100,7 +107,7 @@ export default {
                     headers: { "Content-Type": "application/json" }
                 });
             }
-            
+
             return adicionarCORS(response);
         } catch (error) {
             console.error("❌ ERRO:", error);
@@ -138,159 +145,159 @@ async function handleDashboard(env, corsHeaders) {
         // 🔄 SISTEMA DE CACHE INTELIGENTE
         // SEMPRE buscar: Inserções (5 em 5 segundos)
         // Cache por 24h: Campanhas, Emissoras Programadas, Top Emissoras, Top Cidades
-        
+
         let todasCampanhas, campanhasAtivas, emissorasProgramadas;
         let cacheStatus = "FRESH";
 
-    // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache)
-    if (env.DASHBOARD_KV) {
-        try {
-            const cacheDadosEstaticos = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
-            
-            if (cacheDadosEstaticos) {
-                // ✅ Cache válido - usar dados em memória
-                const parsed = JSON.parse(cacheDadosEstaticos);
-                todasCampanhas = parsed.todasCampanhas;
-                campanhasAtivas = parsed.campanhasAtivas;
-                emissorasProgramadas = parsed.emissorasProgramadas;
-                cacheStatus = "FROM_24H_CACHE";
-                console.log(`✅ Dados estáticos carregados do CACHE DE 24H`);
-            } else {
-                // ❌ Cache expirado ou não existe - buscar dados frescos
-                console.log(`⏳ Cache de 24h expirado ou não existe - BUSCANDO DADOS FRESCOS...`);
+        // 1️⃣ CARREGAR DADOS ESTÁTICOS (24h de cache)
+        if (env.DASHBOARD_KV) {
+            try {
+                const cacheDadosEstaticos = await env.DASHBOARD_KV.get(`dados-estaticos-${dataHoje}`);
+
+                if (cacheDadosEstaticos) {
+                    // ✅ Cache válido - usar dados em memória
+                    const parsed = JSON.parse(cacheDadosEstaticos);
+                    todasCampanhas = parsed.todasCampanhas;
+                    campanhasAtivas = parsed.campanhasAtivas;
+                    emissorasProgramadas = parsed.emissorasProgramadas;
+                    cacheStatus = "FROM_24H_CACHE";
+                    console.log(`✅ Dados estáticos carregados do CACHE DE 24H`);
+                } else {
+                    // ❌ Cache expirado ou não existe - buscar dados frescos
+                    console.log(`⏳ Cache de 24h expirado ou não existe - BUSCANDO DADOS FRESCOS...`);
+                    todasCampanhas = await buscarTodasCampanhas();
+                    campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
+                    emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
+
+                    // Salvar no cache
+                    await env.DASHBOARD_KV.put(
+                        `dados-estaticos-${dataHoje}`,
+                        JSON.stringify({
+                            todasCampanhas,
+                            campanhasAtivas,
+                            emissorasProgramadas,
+                            salvoEm: new Date().toISOString()
+                        }),
+                        { expirationTtl: 86400 } // 24 horas
+                    );
+                    console.log(`💾 Dados estáticos SALVOS no cache de 24h`);
+                    cacheStatus = "FRESH_FETCH";
+                }
+            } catch (cacheError) {
+                console.warn(`⚠️ Erro ao acessar cache: ${cacheError.message} - usando dados frescos`);
                 todasCampanhas = await buscarTodasCampanhas();
                 campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
                 emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
-                
-                // Salvar no cache
-                await env.DASHBOARD_KV.put(
-                    `dados-estaticos-${dataHoje}`,
-                    JSON.stringify({
-                        todasCampanhas,
-                        campanhasAtivas,
-                        emissorasProgramadas,
-                        salvoEm: new Date().toISOString()
-                    }),
-                    { expirationTtl: 86400 } // 24 horas
-                );
-                console.log(`💾 Dados estáticos SALVOS no cache de 24h`);
-                cacheStatus = "FRESH_FETCH";
+                cacheStatus = "ERROR_FALLBACK";
             }
-        } catch (cacheError) {
-            console.warn(`⚠️ Erro ao acessar cache: ${cacheError.message} - usando dados frescos`);
+        } else {
+            // KV não configurado - usar dados frescos
+            console.log(`⚠️ KV não configurado - usando dados frescos sem cache`);
             todasCampanhas = await buscarTodasCampanhas();
             campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-            emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
-            cacheStatus = "ERROR_FALLBACK";
+            emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, null);
+            cacheStatus = "NO_KV";
         }
-    } else {
-        // KV não configurado - usar dados frescos
-        console.log(`⚠️ KV não configurado - usando dados frescos sem cache`);
-        todasCampanhas = await buscarTodasCampanhas();
-        campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-        emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, null);
-        cacheStatus = "NO_KV";
-    }
 
-    if (campanhasAtivas.length === 0) {
-        return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
-    }
+        if (campanhasAtivas.length === 0) {
+            return criarRespostaVazia(horaAtual, minutoAtual, corsHeaders);
+        }
 
-    console.log(`🎯 ${campanhasAtivas.length} campanhas ativas`);
-    console.log(`📻 ${emissorasProgramadas.length} emissoras programadas`);
+        console.log(`🎯 ${campanhasAtivas.length} campanhas ativas`);
+        console.log(`📻 ${emissorasProgramadas.length} emissoras programadas`);
 
-    // 2️⃣ BUSCAR INSERÇÕES (SEMPRE FRESCO - 5 em 5 segundos)
-    const { insercoesRecentes, todasInsercoes } = await buscarInsercoes(
-        campanhasAtivas,
-        dataHoje,
-        horaNum,
-        minutoNum
-    );
+        // 2️⃣ BUSCAR INSERÇÕES (SEMPRE FRESCO - 5 em 5 segundos)
+        const { insercoesRecentes, todasInsercoes } = await buscarInsercoes(
+            campanhasAtivas,
+            dataHoje,
+            horaNum,
+            minutoNum
+        );
 
-    console.log(`📻 ${insercoesRecentes.length} inserções recentes até ${horaAtual}:${minutoAtual}`);
+        console.log(`📻 ${insercoesRecentes.length} inserções recentes até ${horaAtual}:${minutoAtual}`);
 
-    // Mostrar as 5 mais recentes para debug
-    if (insercoesRecentes.length > 0) {
-        console.log(`🕐 5 INSERÇÕES MAIS RECENTES:`);
-        insercoesRecentes.slice(0, 5).forEach((ins, i) => {
-            console.log(`   ${i+1}. ${ins.hour} - ${ins.stationName} - ${ins.city}`);
+        // Mostrar as 5 mais recentes para debug
+        if (insercoesRecentes.length > 0) {
+            console.log(`🕐 5 INSERÇÕES MAIS RECENTES:`);
+            insercoesRecentes.slice(0, 5).forEach((ins, i) => {
+                console.log(`   ${i + 1}. ${ins.hour} - ${ins.stationName} - ${ins.city}`);
+            });
+        }
+
+        // 3️⃣ PROCESSAR COORDENADAS (SEMPRE FRESCO - depende das inserções)
+        const coordenadas = await processarCoordenadas(
+            insercoesRecentes,
+            env.DASHBOARD_KV,
+            dataHoje
+        );
+
+        // 4️⃣ CALCULAR MÉTRICAS (usa cache de 24h para Top Emissoras/Cidades)
+        const metricas = calcularMetricas(
+            insercoesRecentes,
+            campanhasAtivas,
+            emissorasProgramadas,
+            horaAtual,
+            minutoAtual
+        );
+
+        // 5️⃣ PREPARAR RESPOSTA
+        const resultado = {
+            success: true,
+            timestamp: new Date().toISOString(),
+            fromCache: cacheStatus !== "FRESH_FETCH" && cacheStatus !== "NO_KV",
+            cacheStatus: cacheStatus,
+            metricas: metricas,
+            coordenadas: coordenadas,
+            insercoesRecentes: insercoesRecentes.slice(0, 100),
+            debug: {
+                totalCampanhas: todasCampanhas.length,
+                campanhasAtivas: campanhasAtivas.length,
+                emissorasProgramadas: emissorasProgramadas.length,
+                totalInsercoes: todasInsercoes.length,
+                insercoesRecentes: insercoesRecentes.length,
+                horaProcessamento: `${horaAtual}:${minutoAtual}`,
+                ultimaHoraEncontrada: insercoesRecentes[0]?.hour || 'Nenhuma',
+                cacheStrategy: "Estatísticos (campanhas, emissoras, top) = 24h | Dinâmicos (inserções, pingas) = 5s"
+            }
+        };
+
+        // 7. Salvar cache ATUALIZADO (incluindo métricas para consistência)
+        if (env.DASHBOARD_KV) {
+            try {
+                // Salvar inserções, coordenadas e MÉTRICAS para o endpoint /recentes
+                // Isso garante que o endpoint /insercoes/recentes retorna dados consistentes
+                await env.DASHBOARD_KV.put(
+                    `dashboard-completo-${dataHoje}`,
+                    JSON.stringify({
+                        insercoesRecentes,
+                        todasInsercoes,  // ⭐ NOVO: Incluir para frontend calcular milestones
+                        coordenadas,
+                        metricas,
+                        timestamp: Date.now(),
+                        horaAtual,
+                        minutoAtual
+                    }),
+                    { expirationTtl: 86400 }
+                );
+
+                console.log(`💾 Cache COMPLETO salvo (incluindo métricas e todasInsercoes)`);
+            } catch (error) {
+                console.log(`⚠️ Erro ao salvar cache: ${error.message}`);
+            }
+        }
+
+        return new Response(JSON.stringify(resultado, null, 2), {
+            headers: {
+                ...corsHeaders,
+                "Content-Type": "application/json",
+                "X-Cache-Status": "FRESH",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
+            }
         });
-    }
-
-    // 3️⃣ PROCESSAR COORDENADAS (SEMPRE FRESCO - depende das inserções)
-    const coordenadas = await processarCoordenadas(
-        insercoesRecentes,
-        env.DASHBOARD_KV,
-        dataHoje
-    );
-
-    // 4️⃣ CALCULAR MÉTRICAS (usa cache de 24h para Top Emissoras/Cidades)
-    const metricas = calcularMetricas(
-        insercoesRecentes,
-        campanhasAtivas,
-        emissorasProgramadas,
-        horaAtual,
-        minutoAtual
-    );
-
-    // 5️⃣ PREPARAR RESPOSTA
-    const resultado = {
-        success: true,
-        timestamp: new Date().toISOString(),
-        fromCache: cacheStatus !== "FRESH_FETCH" && cacheStatus !== "NO_KV",
-        cacheStatus: cacheStatus,
-        metricas: metricas,
-        coordenadas: coordenadas,
-        insercoesRecentes: insercoesRecentes.slice(0, 100),
-        debug: {
-            totalCampanhas: todasCampanhas.length,
-            campanhasAtivas: campanhasAtivas.length,
-            emissorasProgramadas: emissorasProgramadas.length,
-            totalInsercoes: todasInsercoes.length,
-            insercoesRecentes: insercoesRecentes.length,
-            horaProcessamento: `${horaAtual}:${minutoAtual}`,
-            ultimaHoraEncontrada: insercoesRecentes[0]?.hour || 'Nenhuma',
-            cacheStrategy: "Estatísticos (campanhas, emissoras, top) = 24h | Dinâmicos (inserções, pingas) = 5s"
-        }
-    };
-
-    // 7. Salvar cache ATUALIZADO (incluindo métricas para consistência)
-    if (env.DASHBOARD_KV) {
-        try {
-            // Salvar inserções, coordenadas e MÉTRICAS para o endpoint /recentes
-            // Isso garante que o endpoint /insercoes/recentes retorna dados consistentes
-            await env.DASHBOARD_KV.put(
-                `dashboard-completo-${dataHoje}`,
-                JSON.stringify({
-                    insercoesRecentes,
-                    todasInsercoes,  // ⭐ NOVO: Incluir para frontend calcular milestones
-                    coordenadas,
-                    metricas,
-                    timestamp: Date.now(),
-                    horaAtual,
-                    minutoAtual
-                }),
-                { expirationTtl: 86400 }
-            );
-
-            console.log(`💾 Cache COMPLETO salvo (incluindo métricas e todasInsercoes)`);
-        } catch (error) {
-            console.log(`⚠️ Erro ao salvar cache: ${error.message}`);
-        }
-    }
-
-    return new Response(JSON.stringify(resultado, null, 2), {
-        headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-            "X-Cache-Status": "FRESH",
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-    });
     } catch (error) {
         console.error(`❌ ERRO CRÍTICO em handleDashboard: ${error.message}`);
         console.error(`Stack: ${error.stack}`);
-        
+
         return new Response(JSON.stringify({
             success: false,
             erro: error.message,
@@ -317,7 +324,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
     const dataHoje = agoraBrasilia.toISOString().split('T')[0];
     const horaAtual = String(agoraBrasilia.getHours()).padStart(2, '0');
     const minutoAtual = String(agoraBrasilia.getMinutes()).padStart(2, '0');
-    
+
     // 🔍 DEBUG: Mostrar o tempo que estamos usando
     const horaFormatada = horaAtual + ':' + minutoAtual + ':' + String(agoraBrasilia.getSeconds()).padStart(2, '0');
     console.log(`🕐 TEMPO BRASÍLIA: ${dataHoje} ${horaFormatada}`);
@@ -328,7 +335,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
         // Enquanto isso, busca novos dados em background
         const cacheKey = `insercoes-recentes-${dataHoje}`;
         const cacheTTL = 30; // segundos
-        
+
         // Tentar ler do cache
         let cachedData = null;
         try {
@@ -346,36 +353,36 @@ async function handleInsercoesRecentes(env, corsHeaders) {
         } catch (cacheErr) {
             console.log(`ℹ️ Cache não disponível: ${cacheErr.message}`);
         }
-        
+
         console.log(`📡 Buscando dados FRESCOS da API Audiency...`);
-        
+
         // Buscar campanhas
         const todasCampanhas = await buscarTodasCampanhas();
         const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-        
+
         console.log(`📊 ${todasCampanhas.length} campanhas totais, ${campanhasAtivas.length} ativas`);
-        
+
         if (campanhasAtivas.length === 0) {
             console.warn(`⚠️ NENHUMA CAMPANHA ATIVA! Retornando array vazio`);
         }
-        
+
         // Construir resposta
         const resultado_busca = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
         let insercoesRecentes = resultado_busca.insercoesRecentes || [];
         let todasInsercoesBuscadas = resultado_busca.todasInsercoes || [];
-        
+
         console.log(`🆕 ${insercoesRecentes.length} inserções FRESCAS obtidas da API`);
         console.log(`📊 Total de inserções ANTES do filtro: ${todasInsercoesBuscadas.length}`);
         console.log(`📊 Inserções APÓS filtro de 1 hora: ${insercoesRecentes.length}`);
         console.log(`📊 Inserções REJEITADAS: ${todasInsercoesBuscadas.length - insercoesRecentes.length}`);
-        
+
         // Garantir que é array
         if (!Array.isArray(insercoesRecentes)) {
             insercoesRecentes = [];
         }
-        
+
         console.log(`📦 Total de inserções para retornar: ${insercoesRecentes.length}`);
-        
+
         // ⚠️ LOG CRÍTICO: Quando não há dados
         if (insercoesRecentes.length === 0) {
             console.error(`\n${'='.repeat(100)}`);
@@ -403,7 +410,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             }
             console.error(`${'='.repeat(100)}\n`);
         }
-        
+
         // Construir resposta
         const response = {
             success: true,
@@ -418,14 +425,14 @@ async function handleInsercoesRecentes(env, corsHeaders) {
             },
             cacheTime: Date.now()
         };
-        
+
         if (insercoesRecentes.length > 0) {
             console.log(`\n📋 PRIMEIRAS 3 INSERÇÕES RETORNADAS:`);
             insercoesRecentes.slice(0, 3).forEach((ins, i) => {
-                console.log(`   [${i+1}] ${ins.hour} - ${ins.stationName} (${ins.city})`);
+                console.log(`   [${i + 1}] ${ins.hour} - ${ins.stationName} (${ins.city})`);
             });
         }
-        
+
         // 💾 Salvar no cache para próximas requisições
         try {
             await env.CACHE.put(cacheKey, JSON.stringify({ data: response, cacheTime: Date.now() }));
@@ -433,7 +440,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
         } catch (cacheErr) {
             console.log(`⚠️ Não conseguiu salvar cache: ${cacheErr.message}`);
         }
-        
+
         return new Response(JSON.stringify(response), {
             headers: {
                 ...corsHeaders,
@@ -445,7 +452,7 @@ async function handleInsercoesRecentes(env, corsHeaders) {
     } catch (error) {
         console.error(`❌ ERRO em handleInsercoesRecentes: ${error.message}`);
         console.error(`   Stack: ${error.stack}`);
-        
+
         return new Response(JSON.stringify({
             success: false,
             error: error.message,
@@ -473,14 +480,14 @@ async function handleTodasInsercoes(env, corsHeaders) {
     const dataHoje = agoraBrasilia.toISOString().split('T')[0];
     const horaAtual = String(agoraBrasilia.getHours()).padStart(2, '0');
     const minutoAtual = String(agoraBrasilia.getMinutes()).padStart(2, '0');
-    
+
     const horaFormatada = horaAtual + ':' + minutoAtual + ':' + String(agoraBrasilia.getSeconds()).padStart(2, '0');
     console.log(`🕐 TEMPO BRASÍLIA: ${dataHoje} ${horaFormatada}`);
 
     try {
         const cacheKey = `insercoes-todas-${dataHoje}`;
         const cacheTTL = 30; // segundos
-        
+
         // Tentar ler do cache
         let cachedData = null;
         try {
@@ -498,32 +505,32 @@ async function handleTodasInsercoes(env, corsHeaders) {
         } catch (cacheErr) {
             console.log(`ℹ️ Cache não disponível: ${cacheErr.message}`);
         }
-        
+
         console.log(`📡 Buscando TODAS as inserções do dia da API Audiency...`);
-        
+
         // Buscar campanhas
         const todasCampanhas = await buscarTodasCampanhas();
         const campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-        
+
         console.log(`📊 ${todasCampanhas.length} campanhas totais, ${campanhasAtivas.length} ativas`);
-        
+
         if (campanhasAtivas.length === 0) {
             console.warn(`⚠️ NENHUMA CAMPANHA ATIVA! Retornando array vazio`);
         }
-        
+
         // Construir resposta
         const resultado_busca = await buscarInsercoes(campanhasAtivas, dataHoje, horaAtual, minutoAtual);
         let todasInsercoes = resultado_busca.todasInsercoes || [];
-        
+
         console.log(`📊 Total de inserções do dia: ${todasInsercoes.length}`);
         console.log(`📍 Inserções com cidade preenchida: ${todasInsercoes.filter(i => i.city).length}`);
         console.log(`❌ Inserções SEM cidade: ${todasInsercoes.filter(i => !i.city).length}`);
-        
+
         // Garantir que é array
         if (!Array.isArray(todasInsercoes)) {
             todasInsercoes = [];
         }
-        
+
         // Construir resposta
         const response = {
             success: true,
@@ -539,14 +546,14 @@ async function handleTodasInsercoes(env, corsHeaders) {
             },
             cacheTime: Date.now()
         };
-        
+
         if (todasInsercoes.length > 0) {
             console.log(`\n📋 PRIMEIRAS 3 INSERÇÕES:`);
             todasInsercoes.slice(0, 3).forEach((ins, i) => {
-                console.log(`   [${i+1}] ${ins.hour} - ${ins.stationName} (${ins.city})`);
+                console.log(`   [${i + 1}] ${ins.hour} - ${ins.stationName} (${ins.city})`);
             });
         }
-        
+
         // 💾 Salvar no cache para próximas requisições
         try {
             await env.CACHE.put(cacheKey, JSON.stringify({ data: response, cacheTime: Date.now() }));
@@ -554,7 +561,7 @@ async function handleTodasInsercoes(env, corsHeaders) {
         } catch (cacheErr) {
             console.log(`⚠️ Não conseguiu salvar cache: ${cacheErr.message}`);
         }
-        
+
         return new Response(JSON.stringify(response), {
             headers: {
                 ...corsHeaders,
@@ -566,7 +573,7 @@ async function handleTodasInsercoes(env, corsHeaders) {
     } catch (error) {
         console.error(`❌ ERRO em handleTodasInsercoes: ${error.message}`);
         console.error(`   Stack: ${error.stack}`);
-        
+
         return new Response(JSON.stringify({
             success: false,
             error: error.message,
@@ -639,7 +646,7 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
     // Evita refetch se a campanha já foi consultada (mudança apenas 1x/dia)
     const CACHE_KEY_PREFIX = 'emissoras-campanha-';
     const CACHE_TTL = 86400; // 24 horas
-    
+
     const emissorasMap = new Map();
     let campanhasProcessadas = 0;
     let campanhasDoCache = 0;
@@ -652,12 +659,22 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
             const cacheKey = `${CACHE_KEY_PREFIX}${campanha.id}`;
 
             // 🔍 Tentar carregar do cache individual
+            let dadosNoCache = false;
+            // Limite de segurança para subrequests (Cloudflare workers standard limit is 50)
+            // Se já fizermos muitas chamadas, paramos de buscar novas e usamos o que der (ou vazio)
+            // Reservamos 5 para outras operações
+            if (campanhasNovas > 40) {
+                console.warn(`🛑 Limite de segurança de subrequests atingido (${campanhasNovas}). Parando de buscar novas emissoras.`);
+                break;
+            }
+
             if (kvNamespace) {
                 try {
                     const cachedData = await kvNamespace.get(cacheKey);
                     if (cachedData) {
                         emissoras = JSON.parse(cachedData);
                         campanhasDoCache++;
+                        dadosNoCache = true;
                         console.log(`   ✅ [CACHE] Campanha ${campanha.id} (${campanha.name})`);
                     }
                 } catch (cacheError) {
@@ -694,7 +711,7 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
                     console.log(`   ❌ Campanha ${campanha.id} retornou ${response.status}`);
                     emissoras = [];
                 }
-                
+
                 await new Promise(resolve => setTimeout(resolve, 150));
             }
 
@@ -704,7 +721,7 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
 
                 if (!emissorasMap.has(emissoraKey)) {
                     const { city, uf } = extrairCidadeDoNomeEmissora(emissora.name);
-                    
+
                     emissorasMap.set(emissoraKey, {
                         id: emissora.id,
                         name: emissora.name,
@@ -737,15 +754,15 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
     console.log(`   ✅ ${campanhasDoCache} do CACHE (1x/dia)`);
     console.log(`   📡 ${campanhasNovas} da API (primeira vez)`);
     console.log(`🔄 ${emissorasProgramadas.length} emissoras únicas programadas`);
-    
+
     // Debug: mostrar emissoras com cidade
     const comCidade = emissorasProgramadas.filter(e => e.city).length;
     console.log(`📍 ${comCidade}/${emissorasProgramadas.length} emissoras têm localização`);
-    
+
     // Mostrar amostra
     console.log(`   Amostra:`);
     emissorasProgramadas.slice(0, 5).forEach((e, i) => {
-        console.log(`      [${i+1}] ${e.name} → ${e.city}/${e.uf}`);
+        console.log(`      [${i + 1}] ${e.name} → ${e.city}/${e.uf}`);
     });
 
     return emissorasProgramadas;
@@ -763,19 +780,19 @@ function extrairCidadeDoNomeEmissora(nomeCompleto) {
             const partes = nomeCompleto.split('|');
             if (partes.length >= 2) {
                 const cidadeRaw = partes[partes.length - 1].trim();
-                
+
                 // Agora extrair o UF que vem antes do |
                 const antesDoUltimoPipe = partes[partes.length - 2];
                 const ufMatch = antesDoUltimoPipe.match(/([A-Z]{2})\s*$/);
                 const uf = ufMatch ? ufMatch[1] : '';
-                
+
                 return {
                     city: cidadeRaw,
                     uf: uf
                 };
             }
         }
-        
+
         // Se não encontrou, retornar vazio
         return {
             city: '',
@@ -825,7 +842,7 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     // A API Audiency já retorna dados com ~1 hora de atraso
     // Não precisamos filtrar mais - só prejudica a exibição
     // Mostrar tudo e deixar o frontend/usuário decidir
-    
+
     console.log(`⏰ Hora atual: ${horaAtualNum}:${minutoAtualNum}`);
     console.log(`📊 Estratégia: MOSTRAR TODAS as inserções do dia (sem filtro de delay)`);
 
@@ -853,7 +870,7 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                     const items = data?.data?.lines || [];
 
                     let recentesCount = 0;
-                    
+
                     // 🔍 DEBUG: Registrar a ESTRUTURA exata do primeiro item
                     if (items.length > 0) {
                         console.log(`\n📦 ESTRUTURA DO PRIMEIRO ITEM DA CAMPANHA "${campanha.name}":`);
@@ -874,10 +891,10 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
                         const horaItem = parseInt(partesHora[0]);
                         const minutoItem = parseInt(partesHora[1]);
                         const segundoItem = partesHora.length > 2 ? parseInt(partesHora[2]) : 0;
-                        
+
                         const cidade = item.city ? item.city.split(' / ')[0] : '';
                         const uf = item.city ? item.city.split(' / ')[1] : '';
-                        
+
                         // 🔍 DEBUG: Mostrar itens que não têm cidade
                         if (!cidade && itemIndex < 3) {
                             console.log(`   ⚠️ Item ${itemIndex} SEM CIDADE: stationName="${item.stationName}", city="${item.city}"`);
@@ -943,7 +960,7 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     console.log(`\n${'='.repeat(120)}`);
     console.log(`📋 LOG DETALHADO DE TODAS AS INSERÇÕES RECEBIDAS`);
     console.log(`${'='.repeat(120)}`);
-    
+
     if (logInsercoesDetalhado.length === 0) {
         console.log(`⚠️ Nenhuma inserção recebida!`);
     } else {
@@ -965,13 +982,13 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
             });
         }
     }
-    
+
     console.log(`${'='.repeat(120)}\n`);
 
     // 📋 GUARDAR LOGS GLOBALMENTE PARA ACESSO VIA API
     const filtradas = logInsercoesDetalhado.filter(l => l.horaExibicao.includes('[FILTRADO]'));
     const exibidas = logInsercoesDetalhado.filter(l => !l.horaExibicao.includes('[FILTRADO]'));
-    
+
     logsInsercoesGlobal = {
         timestamp: new Date().toISOString(),
         horaBrasilia: `${horaAtual}:${minutoAtual}`,
@@ -981,7 +998,7 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
         filtradas: filtradas,
         todos: logInsercoesDetalhado.slice(-500) // 🔒 LIMITAR A 500 ÚLTIMOS LOGS
     };
-    
+
     console.log(`✨ Logs salvos globalmente - ${exibidas.length} exibidas, ${filtradas.length} filtradas (${logInsercoesDetalhado.length} total)`);
 
     // ⚠️ LOG CRÍTICO: Se não há dados nenhum
@@ -1030,11 +1047,11 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
         .filter(i => i.city)
         .map(i => `${i.city}/${i.uf}`)
     )].sort();
-    
+
     console.log(`\n🌍 CIDADES NAS INSERÇÕES RECENTES (${cidadesUnicasRecentes.length} total):`);
     if (cidadesUnicasRecentes.length > 0) {
         console.log(`   ${cidadesUnicasRecentes.join(' | ')}`);
-        
+
         // Verificar se Joinville está lá
         if (cidadesUnicasRecentes.some(c => c.includes('Joinville'))) {
             console.log(`   ✅ JOINVILLE ENCONTRADO!`);
@@ -1044,7 +1061,7 @@ async function buscarInsercoes(campanhas, dataHoje, horaAtual, minutoAtual) {
     } else {
         console.log(`   ⚠️ Nenhuma cidade com dados!`);
     }
-    
+
     // 🔍 DEBUG: Estatísticas detalhadas sobre as inserções
     console.log(`\n📊 ANÁLISE DETALHADA DAS INSERÇÕES:`);
     console.log(`   Total de inserções executadas (histórico): ${todasInsercoes.length}`);
@@ -1145,32 +1162,32 @@ async function processarCoordenadas(insercoes, kvNamespace, dataHoje) {
 
     const resultado = Array.from(coordenadasMap.values());
     console.log(`   📊 Total de coordenadas para usar: ${resultado.length}/${cidadesUnicas.length}`);
-    
+
     // Log das cidades sem coordenada
     const comCoordenada = new Set(resultado.map(c => c.cidade));
     const semCoordenada = cidadesUnicas.filter(c => !comCoordenada.has(c));
     if (semCoordenada.length > 0) {
         console.log(`   ⚠️ Cidades sem coordenadas: ${semCoordenada.join(', ')}`);
     }
-    
+
     return resultado;
 }
 
 function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, horaAtual, minutoAtual) {
     console.log(`📊 Calculando métricas...`);
     console.log(`   Total de inserções recebidas: ${insercoes.length}`);
-    
+
     // 🔍 DEBUG: Procurar por Joinville
     const joinvilleInsercoesCount = insercoes.filter(i => i.city && i.city.includes('Joinville')).length;
     console.log(`   ⚠️ Joinville encontrado em ${joinvilleInsercoesCount} inserções`);
-    
+
     if (joinvilleInsercoesCount > 0) {
         console.log(`   ✅ Amostra de Joinville:`);
         insercoes
             .filter(i => i.city && i.city.includes('Joinville'))
             .slice(0, 3)
             .forEach((i, idx) => {
-                console.log(`      [${idx+1}] ${i.stationName} - ${i.city}/${i.uf} - ${i.hour} - ${i.campaign}`);
+                console.log(`      [${idx + 1}] ${i.stationName} - ${i.city}/${i.uf} - ${i.hour} - ${i.campaign}`);
             });
     }
 
@@ -1178,28 +1195,28 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
     // Base: Inserções REAIS de todo o período
     // Métrica: Número de CAMPANHAS DIFERENTES que cada emissora transmitiu
     // MUDANÇA: Agora usa insercoes (dados reais) em vez de emissorasProgramadas (dados programados)
-    
+
     const emissorasTopMap = new Map();
-    
+
     // 🔵 NOVO: Criar mapa rápido das emissoras programadas para buscar cidade/UF
     const emissorasProgramadasMap = new Map();
     emissorasProgramadas.forEach(em => {
         emissorasProgramadasMap.set(em.name, em);
     });
-    
+
     // Iterar sobre as inserções reais para contar campanhas por emissora
     insercoes.forEach(insercao => {
         const emissoraKey = insercao.stationName;
         const campanhaKey = insercao.campaign; // Usar campaign_id para ser mais preciso
-        
+
         if (!emissoraKey || emissoraKey.trim() === '') {
             return; // Pular inserções sem emissora
         }
-        
+
         if (!emissorasTopMap.has(emissoraKey)) {
             // 🔵 NOVO: Tentar buscar dados da emissora em emissorasProgramadas PRIMEIRO
             const emissoraProgramada = emissorasProgramadasMap.get(emissoraKey);
-            
+
             emissorasTopMap.set(emissoraKey, {
                 name: emissoraKey,
                 city: emissoraProgramada?.city || insercao.city || '',
@@ -1207,7 +1224,7 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
                 numerosCampanhasAtivas: new Set()
             });
         }
-        
+
         const emissoraData = emissorasTopMap.get(emissoraKey);
         emissoraData.numerosCampanhasAtivas.add(campanhaKey); // Adiciona campanha ao Set (sem duplicar)
         // Atualizar cidade e UF se ainda não temos (pega da primeira com dados)
@@ -1232,27 +1249,27 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
 
     console.log(`📊 Emissoras com maior número de campanhas ativas (BASEADO EM INSERÇÕES REAIS - ${emissorasTopMap.size} emissoras com inserções):`);
     topEmissoras.slice(0, 5).forEach((e, i) => {
-        console.log(`   ${i+1}. ${e.cidade}/${e.uf} - ${e.emissora} - ${e.numerosCampanhasAtivas} campanhas`);
+        console.log(`   ${i + 1}. ${e.cidade}/${e.uf} - ${e.emissora} - ${e.numerosCampanhasAtivas} campanhas`);
     });
-    
+
     // ===== 2. CIDADES COM MAIOR NÚMERO DE EMISSORAS ATIVAS =====
     // Base: Inserções reais de todo o período (contém city/uf)
     // Métrica: Número de emissoras DIFERENTES que transmitiram em cada cidade
-    
+
     const cidadesMap = new Map();
-    
+
     // Usar as inserções para extrair cidades reais e contar emissoras por cidade
     insercoes.forEach(insercao => {
         const cidade = insercao.city;
         const uf = insercao.uf;
         const stationName = insercao.stationName;
-        
+
         if (!cidade || cidade.trim() === '') {
             return; // Pular inserções sem cidade
         }
-        
+
         const pracaKey = `${cidade}-${uf}`;
-        
+
         if (!cidadesMap.has(pracaKey)) {
             cidadesMap.set(pracaKey, {
                 cidade: cidade,
@@ -1260,11 +1277,11 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
                 numerosEmissorasAtivas: new Set()
             });
         }
-        
+
         const pracaData = cidadesMap.get(pracaKey);
         pracaData.numerosEmissorasAtivas.add(stationName); // Adiciona nome da emissora ao Set (sem duplicar)
     });
-    
+
     console.log(`\n📊 RESULTADO DO MAPEAMENTO:`);
     console.log(`   Inserções processadas: ${insercoes.length}`);
     console.log(`   Cidades encontradas: ${cidadesMap.size}`);
@@ -1288,7 +1305,7 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
         console.log(`   ⚠️ NENHUMA CIDADE! Verificar se inserções têm city field`);
     } else {
         topCidades.slice(0, 5).forEach((c, i) => {
-            console.log(`   ${i+1}. ${c.chaveCompleta} - ${c.numerosEmissorasAtivas} emissoras`);
+            console.log(`   ${i + 1}. ${c.chaveCompleta} - ${c.numerosEmissorasAtivas} emissoras`);
         });
     }
 
@@ -1300,7 +1317,7 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
             console.log(`      ${eIdx + 1}. ${emissora}`);
         });
     });
-    
+
 
     // ===== 3. OUTRAS MÉTRICAS =====
     const cidadesAtivas = new Set(insercoes.map(i => i.city).filter(Boolean)).size;
@@ -1327,26 +1344,26 @@ function calcularMetricas(insercoes, campanhasAtivas, emissorasProgramadas, hora
 function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
     try {
         const animacoes = [];
-        
+
         console.log(`\n🔍 calcularAnimacoesAtivas() COMEÇANDO`);
         console.log(`   Inserções recebidas: ${insercoesRecentes?.length || 0}`);
         console.log(`   Coordenadas disponíveis: ${coordenadas?.length || 0}`);
         console.log(`   Tempo atual: ${tempoAtual}`);
-        
+
         if (!Array.isArray(insercoesRecentes) || !Array.isArray(coordenadas)) {
             console.log(`   ❌ ERRO: Dados em formato inválido`);
             console.log(`      Tipo de insercoesRecentes: ${typeof insercoesRecentes}`);
             console.log(`      Tipo de coordenadas: ${typeof coordenadas}`);
             return [];
         }
-        
+
         if (insercoesRecentes.length === 0 || coordenadas.length === 0) {
             console.log(`   ⚠️ Aviso: Sem inserções ou coordenadas para animar`);
             if (insercoesRecentes.length === 0) console.log(`      - Nenhuma inserção`);
             if (coordenadas.length === 0) console.log(`      - Nenhuma coordenada`);
             return [];
         }
-        
+
         const coordenadasMap = new Map((coordenadas || []).map(c => {
             try {
                 // Debug: mostrar exatamente o que está sendo mapeado
@@ -1359,7 +1376,7 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
                 return null;
             }
         }).filter(item => item !== null));
-        
+
         console.log(`\n📍 MAPA DE COORDENADAS CRIADO:`);
         console.log(`   Cidades mapeadas: ${coordenadasMap.size}`);
         if (coordenadasMap.size > 0) {
@@ -1391,7 +1408,7 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
                 console.log(`      uf: ${insercao?.uf || 'VAZIO'}`);
                 console.log(`      hour: ${insercao?.hour || 'VAZIO'}`);
                 console.log(`      campaign: ${insercao?.campaign || 'VAZIO'}`);
-                
+
                 if (!insercao || !insercao.city) {
                     console.log(`      ❌ SEM CITY - PULANDO (field vazio ou undefined)`);
                     semCoordenadas++;
@@ -1405,28 +1422,28 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
                     const cidadesDisponiveis = Array.from(coordenadasMap.keys());
                     console.log(`         Total de cidades no mapa: ${cidadesDisponiveis.length}`);
                     console.log(`         Primeiras 10: ${cidadesDisponiveis.slice(0, 10).join(', ')}`);
-                    
+
                     // Verificar se há um typo - procurar por cidades similares
-                    const similares = cidadesDisponiveis.filter(c => 
+                    const similares = cidadesDisponiveis.filter(c =>
                         c.toLowerCase().includes(insercao.city.toLowerCase()) ||
                         insercao.city.toLowerCase().includes(c.toLowerCase())
                     );
                     if (similares.length > 0) {
                         console.log(`         ⚠️ Cidades similares encontradas: ${similares.join(', ')}`);
                     }
-                    
+
                     semCoordenadas++;
                     return;
                 }
-                
+
                 if (!coords.lat || !coords.lng) {
                     console.log(`      ❌ Coordenada incompleta para: "${insercao.city}" (lat=${coords.lat}, lng=${coords.lng})`);
                     semCoordenadas++;
                     return;
                 }
-                
+
                 console.log(`      ✅ Coordenada encontrada: (lat=${coords.lat.toFixed(2)}, lng=${coords.lng.toFixed(2)})`);
-                
+
                 const animacaoId = `${insercao.city}-${insercao.hour}-${insercao.stationName}`;
                 console.log(`      ✨ CRIANDO ANIMAÇÃO: ${animacaoId}`);
 
@@ -1443,7 +1460,7 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
                         campanha: insercao.campaign || 'N/A'
                     }
                 });
-                
+
                 convertidas++;
                 console.log(`      ✨ >>> SERÁ ANIMADA <<<`);
             } catch (e) {
@@ -1458,7 +1475,7 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
         console.log(`      ❌ Sem coordenada: ${semCoordenadas}`);
         console.log(`      ⚠️ Erros: ${erros}`);
         console.log(`      📊 Total de animações retornando: ${animacoes.length}`);
-        
+
         return animacoes;
     } catch (error) {
         console.error(`❌ ERRO CRÍTICO em calcularAnimacoesAtivas: ${error.message}`);
@@ -1477,7 +1494,7 @@ function calcularAnimacoesAtivas(insercoesRecentes, coordenadas, tempoAtual) {
 async function handleCoordenada(env, corsHeaders, url) {
     try {
         const cidade = url.searchParams.get('cidade');
-        
+
         if (!cidade) {
             return new Response(JSON.stringify({
                 sucesso: false,
@@ -1494,7 +1511,7 @@ async function handleCoordenada(env, corsHeaders, url) {
         const kvNamespace = env.DASHBOARD_KV;
         const dataHoje = new Date().toISOString().split('T')[0];
         const CACHE_KEY_COORDENADAS = `coordenadas-${dataHoje}`;
-        
+
         let coordenadasCache = {};
         if (kvNamespace) {
             try {
@@ -1535,7 +1552,7 @@ async function handleCoordenada(env, corsHeaders, url) {
         }
 
         const data = await response.json();
-        
+
         if (!data.geonames || data.geonames.length === 0) {
             console.log(`❌ Cidade não encontrada no Geonames: ${cidade}`);
             return new Response(JSON.stringify({
@@ -1605,18 +1622,18 @@ async function handleCoordenada(env, corsHeaders, url) {
 async function handleLogsInsercoes(env, corsHeaders) {
     try {
         console.log(`📋 GET /api/logs/insercoes - Retornando logs de inserções`);
-        
+
         // 🔒 LIMITAR TAMANHO DO RETORNO PARA EVITAR ERRO "FAILED TO FETCH"
         // Retornar apenas os últimos 100 logs de cada categoria
         let logsLimitado = logsInsercoesGlobal;
-        
+
         if (logsInsercoesGlobal && logsInsercoesGlobal.todos) {
             logsLimitado = {
                 ...logsInsercoesGlobal,
                 todos: logsInsercoesGlobal.todos.slice(-100) // Apenas os 100 últimos
             };
         }
-        
+
         return new Response(JSON.stringify({
             sucesso: true,
             logs: logsLimitado || {
@@ -1649,7 +1666,7 @@ async function handleLogsInsercoes(env, corsHeaders) {
 async function handleVideos(env, corsHeaders) {
     try {
         console.log(`🎥 GET /api/videos - Buscando vídeos do Google Drive`);
-        
+
         // Verificar se a API Key está configurada
         if (!GOOGLE_DRIVE_CONFIG.API_KEY || GOOGLE_DRIVE_CONFIG.API_KEY === "COLOQUE_API_KEY_AQUI") {
             console.warn(`⚠️ API Key não configurada`);
@@ -1667,7 +1684,7 @@ async function handleVideos(env, corsHeaders) {
 
         // Chamar Google Drive API para listar vídeos
         const videos = await buscarVideosDoGoogleDrive();
-        
+
         console.log(`🎥 Vídeos retornados: ${videos.length}`);
 
         return new Response(JSON.stringify({
@@ -1716,7 +1733,7 @@ async function buscarVideosDoGoogleDrive() {
         // Query para buscar vídeos (MP4, WebM, Mov, etc)
         const mimeTypes = "mimeType='video/mp4' or mimeType='video/webm' or mimeType='video/quicktime' or mimeType='video/x-msvideo'";
         const query = encodeURIComponent(`'${folderId}' in parents and (${mimeTypes}) and trashed=false`);
-        
+
         const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,createdTime,webViewLink,size)&orderBy=createdTime+desc&pageSize=50&key=${apiKey}`;
 
         console.log(`🎥 URL (primeiros 100 chars): ${url.substring(0, 100)}...`);
@@ -1731,7 +1748,7 @@ async function buscarVideosDoGoogleDrive() {
             console.error(`🎥 ❌ Response NOT OK - Status: ${response.status}`);
             const errorText = await response.text();
             console.error(`🎥 ❌ Response body (primeiros 200 chars): ${errorText.substring(0, 200)}`);
-            
+
             try {
                 const errorData = JSON.parse(errorText);
                 throw new Error(`Erro ao chamar Google Drive API: ${response.status} - ${errorData.error?.message || response.statusText}`);
@@ -1767,7 +1784,7 @@ async function buscarVideosDoGoogleDrive() {
 
         console.log(`🎥 ✅ ${videos.length} vídeos processados e mapeados`);
         videos.slice(0, 5).forEach((v, i) => {
-            console.log(`🎥    ${i+1}. ${v.nome} (${v.tamanho})`);
+            console.log(`🎥    ${i + 1}. ${v.nome} (${v.tamanho})`);
         });
 
         console.log(`🎥 ✅ === FIM buscarVideosDoGoogleDrive - Retornando ${videos.length} vídeos ===`);
@@ -1809,7 +1826,7 @@ function criarRespostaVazia(hora, minuto, corsHeaders) {
 async function handleVideosCheck(env, corsHeaders) {
     try {
         console.log(`🔍 Verificando acesso aos vídeos...`);
-        
+
         const videos = await buscarVideosDoGoogleDrive();
 
         const resultados = await Promise.all(videos.map(async (video) => {
@@ -1874,7 +1891,7 @@ async function handleVideosCheck(env, corsHeaders) {
 async function handleVideosTest(env, corsHeaders) {
     try {
         console.log(`🧪 Teste de vídeo simples...`);
-        
+
         const videos = await buscarVideosDoGoogleDrive();
 
         if (videos.length === 0) {
@@ -1992,7 +2009,7 @@ async function handleVideosPreload(env, corsHeaders) {
         for (const video of videos) {
             const cacheKey = `video-cache-${video.id}`;
             const videoEmCache = await env.DASHBOARD_KV.get(cacheKey);
-            
+
             if (videoEmCache) {
                 videosEmCache.push(video.nome);
             } else {
@@ -2008,7 +2025,7 @@ async function handleVideosPreload(env, corsHeaders) {
         // Vamos fazer download de até 5 vídeos em paralelo
         const videosParaDownloadGrupos = [];
         const tamanhoGrupo = 5;
-        
+
         for (let i = 0; i < videosParaCarregar.length; i += tamanhoGrupo) {
             videosParaDownloadGrupos.push(videosParaCarregar.slice(i, i + tamanhoGrupo));
         }
@@ -2074,13 +2091,13 @@ async function precarregarVideosEmBackground(videos, kvNamespace) {
         for (const video of videosParaCarregar) {
             try {
                 console.log(`📥 Baixando: ${video.nome}`);
-                
+
                 const driveUrl = `https://drive.google.com/uc?id=${video.id}&export=download&confirm=t`;
-                
+
                 // Timeout de 10 segundos por vídeo
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
-                
+
                 const response = await fetch(driveUrl, {
                     method: 'GET',
                     headers: {
@@ -2098,7 +2115,7 @@ async function precarregarVideosEmBackground(videos, kvNamespace) {
                 // Obter buffer do vídeo
                 const videoBuffer = await response.arrayBuffer();
                 const tamanhoMB = Math.round(videoBuffer.byteLength / 1024 / 1024 * 100) / 100;
-                
+
                 // Limitar a 100MB por vídeo
                 if (videoBuffer.byteLength > 100 * 1024 * 1024) {
                     console.warn(`⚠️ Vídeo ${video.nome} é muito grande (${tamanhoMB}MB) - ignorando cache`);
@@ -2151,7 +2168,7 @@ async function handleVideoProxy(env, corsHeaders, url) {
     try {
         // Extrair ID do vídeo da URL: /api/video-proxy/VIDEO_ID
         const videoId = url.pathname.split('/api/video-proxy/')[1];
-        
+
         if (!videoId) {
             return new Response(JSON.stringify({
                 erro: "ID do vídeo não fornecido"
@@ -2174,7 +2191,7 @@ async function handleVideoProxy(env, corsHeaders, url) {
                 try {
                     const metadata = JSON.parse(metadataCached);
                     const tempoCache = Date.now() - tempoInicio;
-                    
+
                     console.log(`✅ Vídeo do CACHE: ${metadata.nome} (${Math.round(metadata.tamanho / 1024 / 1024 * 100) / 100}MB) - ${tempoCache}ms`);
 
                     return new Response(videoCached, {
@@ -2200,7 +2217,7 @@ async function handleVideoProxy(env, corsHeaders, url) {
         console.log(`📥 Vídeo não em cache - buscando do Google Drive`);
 
         const driveUrl = `https://drive.google.com/uc?id=${videoId}&export=download&confirm=t`;
-        
+
         const response = await fetch(driveUrl, {
             method: 'GET',
             headers: {
@@ -2218,13 +2235,13 @@ async function handleVideoProxy(env, corsHeaders, url) {
         // Obter tamanho do conteúdo
         const contentLength = response.headers.get('Content-Length');
         let contentType = response.headers.get('Content-Type') || 'video/mp4';
-        
+
         // ⚠️ Google Drive às vezes retorna tipo incorreto - forçar video/mp4
         if (contentType.includes('octet-stream') || !contentType.includes('video')) {
             console.log(`⚠️ Tipo incorreto do Google Drive: ${contentType} - forçando video/mp4`);
             contentType = 'video/mp4';
         }
-        
+
         const tempoResposta = Date.now() - tempoInicio;
         console.log(`📦 Tamanho: ${contentLength} bytes | Tipo: ${contentType} | ${tempoResposta}ms`);
 
@@ -2269,7 +2286,7 @@ async function handleVideoProxy(env, corsHeaders, url) {
 async function handleVideoHLS(env, corsHeaders, url) {
     try {
         const videoId = url.pathname.split('/api/video-hls/')[1];
-        
+
         if (!videoId) {
             return new Response(JSON.stringify({
                 erro: "ID do vídeo não fornecido"
@@ -2351,9 +2368,9 @@ async function handleVideoDiagnoseAuto(env, corsHeaders) {
         const videos = await buscarVideosDoGoogleDrive();
 
         if (videos.length === 0) {
-            return new Response(JSON.stringify({ 
+            return new Response(JSON.stringify({
                 sucesso: false,
-                erro: "Nenhum vídeo encontrado" 
+                erro: "Nenhum vídeo encontrado"
             }), {
                 status: 404,
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -2388,10 +2405,10 @@ async function handleVideoDiagnoseAuto(env, corsHeaders) {
                 });
 
                 console.log(`   Status: ${response.status}`);
-                
+
                 const contentType = response.headers.get('Content-Type');
                 const contentLength = response.headers.get('Content-Length');
-                
+
                 console.log(`   Content-Type: ${contentType}`);
                 console.log(`   Content-Length: ${contentLength}`);
 
@@ -2403,7 +2420,7 @@ async function handleVideoDiagnoseAuto(env, corsHeaders) {
                 if (response.ok) {
                     const buffer = await response.arrayBuffer();
                     const bytes = new Uint8Array(buffer);
-                    
+
                     // Verificar assinatura de arquivo
                     primeirosBytesHex = Array.from(bytes.slice(0, 32))
                         .map(b => b.toString(16).padStart(2, '0'))
@@ -2419,8 +2436,8 @@ async function handleVideoDiagnoseAuto(env, corsHeaders) {
                     }
 
                     // Verificar assinatura MP4 (ftyp box)
-                    if (bytes[0] === 0x00 && bytes[1] === 0x00 && bytes[2] === 0x00 && 
-                        (bytes[3] === 0x18 || bytes[3] === 0x20) && 
+                    if (bytes[0] === 0x00 && bytes[1] === 0x00 && bytes[2] === 0x00 &&
+                        (bytes[3] === 0x18 || bytes[3] === 0x20) &&
                         bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
                         isValidMp4 = true;
                         formatDetectado = 'MP4 VÁLIDO ✅';
@@ -2509,7 +2526,7 @@ async function handleVideoDiagnoseAuto(env, corsHeaders) {
 async function handleVideoDiagnose(env, corsHeaders, url) {
     try {
         const videoId = url.pathname.split('/api/video-diagnose/')[1];
-        
+
         if (!videoId) {
             return new Response(JSON.stringify({ erro: "ID não fornecido" }), {
                 status: 400,
@@ -2554,10 +2571,10 @@ async function handleVideoDiagnose(env, corsHeaders, url) {
                 });
 
                 console.log(`   Status: ${response.status}`);
-                
+
                 const contentType = response.headers.get('Content-Type');
                 const contentLength = response.headers.get('Content-Length');
-                
+
                 console.log(`   Content-Type: ${contentType}`);
                 console.log(`   Content-Length: ${contentLength}`);
 
@@ -2568,7 +2585,7 @@ async function handleVideoDiagnose(env, corsHeaders, url) {
                 if (response.ok) {
                     const buffer = await response.arrayBuffer();
                     const bytes = new Uint8Array(buffer);
-                    
+
                     // Verificar assinatura de arquivo
                     primeirosBytesHex = Array.from(bytes.slice(0, 32))
                         .map(b => b.toString(16).padStart(2, '0'))
@@ -2577,8 +2594,8 @@ async function handleVideoDiagnose(env, corsHeaders, url) {
                     console.log(`   Primeiros bytes: ${primeirosBytesHex}`);
 
                     // Verificar assinatura MP4 (ftyp box)
-                    if (bytes[0] === 0x00 && bytes[1] === 0x00 && bytes[2] === 0x00 && 
-                        (bytes[3] === 0x18 || bytes[3] === 0x20) && 
+                    if (bytes[0] === 0x00 && bytes[1] === 0x00 && bytes[2] === 0x00 &&
+                        (bytes[3] === 0x18 || bytes[3] === 0x20) &&
                         bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
                         isValidMp4 = true;
                         formatDetectado = 'MP4 VÁLIDO ✅';
@@ -2663,7 +2680,7 @@ async function handleVideoDiagnose(env, corsHeaders, url) {
 async function handleVideoStream(env, corsHeaders, url) {
     try {
         const videoId = url.pathname.split('/api/video-stream/')[1];
-        
+
         if (!videoId) {
             console.log('❌ Video ID não fornecido');
             return new Response(JSON.stringify({
@@ -2802,25 +2819,25 @@ async function handleVideoStream(env, corsHeaders, url) {
 async function proxyGoogleDriveVideo(fileId) {
     try {
         console.log(`🎥 [PROXY] Iniciando stream de vídeo: ${fileId}`);
-        
+
         // URL de download direto do Google Drive
         const url = `https://drive.google.com/uc?export=download&id=${fileId}`;
         console.log(`🎥 [PROXY] Fetching: ${url}`);
-        
+
         const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
-        
+
         if (!response.ok) {
             console.error(`🎥 [PROXY] ❌ Erro: ${response.status}`);
             return new Response('Vídeo não encontrado', { status: 404 });
         }
-        
+
         console.log(`🎥 [PROXY] ✅ Stream iniciado - ${response.headers.get('content-type')}`);
-        
+
         // Proxificar a resposta com headers apropriados para vídeo
         return new Response(response.body, {
             status: 200,
@@ -2836,7 +2853,7 @@ async function proxyGoogleDriveVideo(fileId) {
                 'X-Content-Type-Options': 'nosniff'
             }
         });
-        
+
     } catch (error) {
         console.error(`🎥 [PROXY] ❌ ERRO: ${error.message}`);
         return new Response('Erro ao carregar vídeo', { status: 500 });
