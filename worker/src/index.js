@@ -38,24 +38,30 @@ let logsInsercoesGlobal = [];
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, apiKey",
     "Access-Control-Max-Age": "86400",
 };
 
 // Middleware para adicionar CORS a TODAS as respostas
-// Middleware para adicionar CORS a TODAS as respostas
 function adicionarCORS(response) {
     if (!response) {
-        return new Response("Erro interno: Resposta vazia", {
+        return new Response(JSON.stringify({ error: "Erro interno: Resposta vazia" }), {
             status: 500,
-            headers: corsHeaders
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
     }
-    const novaResponse = new Response(response.body, response);
+
+    // Criar uma nova resposta com os mesmos dados e status, mas injetando os cabeçalhos CORS
+    const headers = new Headers(response.headers);
     Object.entries(corsHeaders).forEach(([key, value]) => {
-        novaResponse.headers.set(key, value);
+        headers.set(key, value);
     });
-    return novaResponse;
+
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: headers
+    });
 }
 
 export default {
@@ -660,11 +666,11 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
 
             // 🔍 Tentar carregar do cache individual
             let dadosNoCache = false;
-            // Limite de segurança para subrequests (Cloudflare workers standard limit is 50)
-            // Se já fizermos muitas chamadas, paramos de buscar novas e usamos o que der (ou vazio)
-            // Reservamos 5 para outras operações
-            if (campanhasNovas > 40) {
-                console.warn(`🛑 Limite de segurança de subrequests atingido (${campanhasNovas}). Parando de buscar novas emissoras.`);
+
+            // ⭐ NOVO: Limite de segurança para subrequests (Cloudflare workers standard limit is 50)
+            // Reservamos 5 para outras operações (como logs ou geonames)
+            if (campanhasNovas > 45) {
+                console.warn(`🛑 Limite de segurança de subrequests atingido (${campanhasNovas}). Parando de buscar novas emissoras para evitar crash do Worker.`);
                 break;
             }
 
