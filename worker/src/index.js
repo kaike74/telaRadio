@@ -173,7 +173,7 @@ async function handleDashboard(env, corsHeaders) {
                     console.log(`⏳ Cache de 24h expirado ou não existe - BUSCANDO DADOS FRESCOS...`);
                     todasCampanhas = await buscarTodasCampanhas();
                     campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-                    emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
+                    emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV, dataHoje);
 
                     // Salvar no cache
                     await env.DASHBOARD_KV.put(
@@ -193,7 +193,7 @@ async function handleDashboard(env, corsHeaders) {
                 console.warn(`⚠️ Erro ao acessar cache: ${cacheError.message} - usando dados frescos`);
                 todasCampanhas = await buscarTodasCampanhas();
                 campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-                emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV);
+                emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, env.DASHBOARD_KV, dataHoje);
                 cacheStatus = "ERROR_FALLBACK";
             }
         } else {
@@ -201,7 +201,7 @@ async function handleDashboard(env, corsHeaders) {
             console.log(`⚠️ KV não configurado - usando dados frescos sem cache`);
             todasCampanhas = await buscarTodasCampanhas();
             campanhasAtivas = filtrarCampanhasAtivas(todasCampanhas, dataHoje);
-            emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, null);
+            emissorasProgramadas = await buscarEmissorasProgramadas(campanhasAtivas, null, dataHoje);
             cacheStatus = "NO_KV";
         }
 
@@ -267,26 +267,33 @@ async function handleDashboard(env, corsHeaders) {
             }
         };
 
-        // 7. Salvar cache ATUALIZADO (incluindo métricas para consistência)
+        // 7. Salvar cache ATUALIZADO com COOLDOWN (reduz escritas KV)
+        // Só grava a cada 5 min para não estourar limite de KV
         if (env.DASHBOARD_KV) {
             try {
-                // Salvar inserções, coordenadas e MÉTRICAS para o endpoint /recentes
-                // Isso garante que o endpoint /insercoes/recentes retorna dados consistentes
-                await env.DASHBOARD_KV.put(
-                    `dashboard-completo-${dataHoje}`,
-                    JSON.stringify({
-                        insercoesRecentes,
-                        todasInsercoes,  // ⭐ NOVO: Incluir para frontend calcular milestones
-                        coordenadas,
-                        metricas,
-                        timestamp: Date.now(),
-                        horaAtual,
-                        minutoAtual
-                    }),
-                    { expirationTtl: 86400 }
-                );
+                const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
+                const lastWriteKey = `dashboard-completo-lastwrite-${dataHoje}`;
+                const lastWrite = await env.DASHBOARD_KV.get(lastWriteKey);
+                const now = Date.now();
+                const shouldWrite = !lastWrite || (now - parseInt(lastWrite, 10)) > COOLDOWN_MS;
 
-                console.log(`💾 Cache COMPLETO salvo (incluindo métricas e todasInsercoes)`);
+                if (shouldWrite) {
+                    await env.DASHBOARD_KV.put(
+                        `dashboard-completo-${dataHoje}`,
+                        JSON.stringify({
+                            insercoesRecentes,
+                            todasInsercoes,
+                            coordenadas,
+                            metricas,
+                            timestamp: now,
+                            horaAtual,
+                            minutoAtual
+                        }),
+                        { expirationTtl: 86400 }
+                    );
+                    await env.DASHBOARD_KV.put(lastWriteKey, String(now), { expirationTtl: 86400 });
+                    console.log(`💾 Cache COMPLETO salvo (cooldown 5 min)`);
+                }
             } catch (error) {
                 console.log(`⚠️ Erro ao salvar cache: ${error.message}`);
             }
@@ -645,83 +652,53 @@ function filtrarCampanhasAtivas(campanhas, dataHoje) {
     });
 }
 
-async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
+async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null, dataHoje = null) {
     console.log(`🎯 Buscando emissoras programadas para ${campanhasAtivas.length} campanhas...`);
 
-    // 🚀 OTIMIZAÇÃO: Cache por campanha individual
-    // Evita refetch se a campanha já foi consultada (mudança apenas 1x/dia)
-    const CACHE_KEY_PREFIX = 'emissoras-campanha-';
+    // 🚀 REDUÇÃO DE KV: 1 chave por dia (bundle) em vez de N chaves por campanha
     const CACHE_TTL = 86400; // 24 horas
+    const BUNDLE_KEY = dataHoje ? `emissoras-bundle-${dataHoje}` : null;
+
+    if (kvNamespace && BUNDLE_KEY) {
+        try {
+            const bundle = await kvNamespace.get(BUNDLE_KEY);
+            if (bundle) {
+                const emissorasProgramadas = JSON.parse(bundle);
+                console.log(`   ✅ [CACHE] Bundle de emissoras (1 leitura KV) - ${emissorasProgramadas.length} emissoras`);
+                return emissorasProgramadas;
+            }
+        } catch (cacheError) {
+            console.warn(`⚠️ Erro ao ler bundle: ${cacheError.message}`);
+        }
+    }
 
     const emissorasMap = new Map();
     let campanhasProcessadas = 0;
-    let campanhasDoCache = 0;
     let campanhasNovas = 0;
 
-    // Processar TODAS as campanhas ativas
     for (const campanha of campanhasAtivas) {
         try {
-            let emissoras = null;
-            const cacheKey = `${CACHE_KEY_PREFIX}${campanha.id}`;
-
-            // 🔍 Tentar carregar do cache individual
-            let dadosNoCache = false;
-
-            // ⭐ NOVO: Limite de segurança para subrequests (Cloudflare workers standard limit is 50)
-            // Reservamos 5 para outras operações (como logs ou geonames)
+            // ⭐ Limite de segurança para subrequests (Cloudflare workers standard limit is 50)
             if (campanhasNovas > 45) {
-                console.warn(`🛑 Limite de segurança de subrequests atingido (${campanhasNovas}). Parando de buscar novas emissoras para evitar crash do Worker.`);
+                console.warn(`🛑 Limite de segurança de subrequests atingido (${campanhasNovas}). Parando.`);
                 break;
             }
 
-            if (kvNamespace) {
-                try {
-                    const cachedData = await kvNamespace.get(cacheKey);
-                    if (cachedData) {
-                        emissoras = JSON.parse(cachedData);
-                        campanhasDoCache++;
-                        dadosNoCache = true;
-                        console.log(`   ✅ [CACHE] Campanha ${campanha.id} (${campanha.name})`);
-                    }
-                } catch (cacheError) {
-                    // Se erro no cache, buscar fresco
-                }
+            const url = `https://api.audiency.io/advertiser-rest/campaigns/${campanha.id}/programmed-station-filter`;
+            const response = await fetch(url, {
+                headers: { "accept": "application/json", "apiKey": API_KEY }
+            });
+
+            let emissoras = [];
+            if (response.ok) {
+                const data = await response.json();
+                emissoras = Array.isArray(data.data) ? data.data : [];
+                campanhasNovas++;
+                console.log(`   📡 [API] Campanha ${campanha.id} (${campanha.name}) - ${emissoras.length} emissoras`);
+            } else {
+                console.log(`   ❌ Campanha ${campanha.id} retornou ${response.status}`);
             }
 
-            // 📡 Se não tem no cache, buscar da API
-            if (!emissoras) {
-                const url = `https://api.audiency.io/advertiser-rest/campaigns/${campanha.id}/programmed-station-filter`;
-                const response = await fetch(url, {
-                    headers: { "accept": "application/json", "apiKey": API_KEY }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    emissoras = Array.isArray(data.data) ? data.data : [];
-                    campanhasNovas++;
-
-                    // 💾 Salvar no cache individual
-                    if (kvNamespace) {
-                        try {
-                            await kvNamespace.put(
-                                cacheKey,
-                                JSON.stringify(emissoras),
-                                { expirationTtl: CACHE_TTL }
-                            );
-                        } catch (saveError) {
-                            console.warn(`⚠️ Erro ao cachear campanha ${campanha.id}: ${saveError.message}`);
-                        }
-                    }
-                    console.log(`   📡 [API] Campanha ${campanha.id} (${campanha.name}) - ${emissoras.length} emissoras`);
-                } else {
-                    console.log(`   ❌ Campanha ${campanha.id} retornou ${response.status}`);
-                    emissoras = [];
-                }
-
-                await new Promise(resolve => setTimeout(resolve, 150));
-            }
-
-            // ✅ Adicionar emissoras ao mapa
             emissoras.forEach(emissora => {
                 const emissoraKey = `${emissora.name}-${emissora.id}`;
 
@@ -749,6 +726,7 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
             });
 
             campanhasProcessadas++;
+            await new Promise(resolve => setTimeout(resolve, 150));
 
         } catch (error) {
             console.log(`❌ Erro campanha ${campanha.id}: ${error.message}`);
@@ -757,9 +735,18 @@ async function buscarEmissorasProgramadas(campanhasAtivas, kvNamespace = null) {
 
     const emissorasProgramadas = Array.from(emissorasMap.values());
     console.log(`📻 ${campanhasProcessadas}/${campanhasAtivas.length} campanhas processadas`);
-    console.log(`   ✅ ${campanhasDoCache} do CACHE (1x/dia)`);
-    console.log(`   📡 ${campanhasNovas} da API (primeira vez)`);
+    console.log(`   📡 ${campanhasNovas} da API`);
     console.log(`🔄 ${emissorasProgramadas.length} emissoras únicas programadas`);
+
+    // 💾 Salvar bundle único (1 escrita KV em vez de N)
+    if (kvNamespace && BUNDLE_KEY) {
+        try {
+            await kvNamespace.put(BUNDLE_KEY, JSON.stringify(emissorasProgramadas), { expirationTtl: CACHE_TTL });
+            console.log(`   💾 Bundle salvo no KV (1 escrita)`);
+        } catch (saveError) {
+            console.warn(`⚠️ Erro ao salvar bundle: ${saveError.message}`);
+        }
+    }
 
     // Debug: mostrar emissoras com cidade
     const comCidade = emissorasProgramadas.filter(e => e.city).length;
@@ -2008,22 +1995,24 @@ async function handleVideosPreload(env, corsHeaders) {
             });
         }
 
-        // 2. Verificar quais vídeos já estão em cache
+        // 2. Verificar quais vídeos já estão em cache (1 leitura KV em vez de N)
         const videosEmCache = [];
         const videosParaCarregar = [];
+        let indexIds = new Set();
+        try {
+            const indexRaw = await env.DASHBOARD_KV.get('video-cache-index');
+            if (indexRaw) indexIds = new Set(JSON.parse(indexRaw));
+        } catch (_) {}
 
         for (const video of videos) {
-            const cacheKey = `video-cache-${video.id}`;
-            const videoEmCache = await env.DASHBOARD_KV.get(cacheKey);
-
-            if (videoEmCache) {
+            if (indexIds.has(video.id)) {
                 videosEmCache.push(video.nome);
             } else {
                 videosParaCarregar.push(video);
             }
         }
 
-        console.log(`✅ ${videosEmCache.length} vídeos já em cache`);
+        console.log(`✅ ${videosEmCache.length} vídeos já em cache (índice KV)`);
         console.log(`📥 ${videosParaCarregar.length} vídeos aguardando download`);
 
         // 3. Iniciar download em background (não bloqueia resposta)
@@ -2082,6 +2071,7 @@ async function handleVideosPreload(env, corsHeaders) {
 
 // ===== PRÉ-CARREGAR VÍDEOS EM BACKGROUND =====
 async function precarregarVideosEmBackground(videos, kvNamespace) {
+    const idsCacheados = [];
     try {
         console.log(`🚀 Iniciando pré-carregamento de ${videos.length} vídeos em background`);
 
@@ -2154,12 +2144,23 @@ async function precarregarVideosEmBackground(videos, kvNamespace) {
 
                 carregados++;
                 tamanhoTotalMB += tamanhoMB;
+                idsCacheados.push(video.id);
                 console.log(`✅ Cached: ${video.nome} (${tamanhoMB}MB) - Total: ${tamanhoTotalMB}MB`);
 
             } catch (error) {
                 erros++;
                 console.error(`❌ Erro ao baixar ${video.nome}: ${error.message}`);
             }
+        }
+
+        // Atualizar índice em 1 escrita (reduz leituras no próximo preload)
+        if (idsCacheados.length > 0 && kvNamespace) {
+            try {
+                const indexRaw = await kvNamespace.get('video-cache-index');
+                const index = indexRaw ? new Set(JSON.parse(indexRaw)) : new Set();
+                idsCacheados.forEach(id => index.add(id));
+                await kvNamespace.put('video-cache-index', JSON.stringify([...index]), { expirationTtl: 604800 });
+            } catch (_) {}
         }
 
         console.log(`🎉 Pré-carregamento concluído: ${carregados}/${maxVideos} sucesso, ${erros} erros, ${tamanhoTotalMB}MB cached`);
