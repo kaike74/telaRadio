@@ -206,125 +206,127 @@ document.addEventListener('DOMContentLoaded', () => {
  * Esses pings ficam na tela indefinidamente até a página ser recarregada
  * Chamado na inicialização da página
  */
+// Timeout longo: o Worker chama a API Audiency várias vezes (campanhas + inserções) e pode levar 30–60s
+const PINGS_AZUIS_TIMEOUT_MS = 60000;
+const PINGS_AZUIS_MAX_TENTATIVAS = 2;
+
 async function carregarPingsAzuis() {
     console.log('🔵🔵🔵 FUNÇÃO carregarPingsAzuis() INICIADA 🔵🔵🔵');
     
     // Limpar pings rosas ANTES de carregar azuis
-    // Isso garante que não acumulem na tela
     limparPingsRosas();
     
-    try {
-        const apiUrl = `${CONFIG.API_BASE}/api/insercoes/todas`;
-        console.log(`🔵 Fetching: ${apiUrl}`);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-        
-        const response = await fetch(apiUrl, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        console.log(`🔵 Response status: ${response.status}`);
-        
-        if (!response.ok) {
-            console.error(`🔵 HTTP Error: ${response.status} ${response.statusText}`);
-            return;
-        }
-        
-        const data = await response.json();
-        console.log(`🔵 Data received:`, data);
-        
-        if (!data.success) {
-            console.error(`🔵 API returned success: false`);
-            return;
-        }
-        
-        if (!data.todasInsercoes || !Array.isArray(data.todasInsercoes)) {
-            console.error(`🔵 data.todasInsercoes is not an array`, data.todasInsercoes);
-            return;
-        }
-        
-        console.log(`✅ ${data.todasInsercoes.length} inserções do dia recebidas`);
-        
-        // Filtrar apenas inserções com cidade
-        const insercoesCidade = data.todasInsercoes.filter(ins => ins.city && ins.city.trim() !== '');
-        console.log(`🔵 ${insercoesCidade.length} inserções com cidade`);
-        
-        if (insercoesCidade.length === 0) {
-            console.warn('⚠️ Nenhuma inserção com cidade para criar pings');
-            return;
-        }
-        
-        // Processar em lotes de 5
-        const batchSize = 5;
-        let processadas = 0;
-        
-        for (let i = 0; i < insercoesCidade.length; i += batchSize) {
-            const batch = insercoesCidade.slice(i, i + batchSize);
+    for (let tentativa = 1; tentativa <= PINGS_AZUIS_MAX_TENTATIVAS; tentativa++) {
+        try {
+            const apiUrl = `${CONFIG.API_BASE}/api/insercoes/todas`;
+            console.log(`🔵 Fetching: ${apiUrl} (tentativa ${tentativa}/${PINGS_AZUIS_MAX_TENTATIVAS}, timeout ${PINGS_AZUIS_TIMEOUT_MS / 1000}s)`);
             
-            console.log(`🔵 Processando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(insercoesCidade.length / batchSize)}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), PINGS_AZUIS_TIMEOUT_MS);
             
-            // Processar cada inserção do lote
-            for (const insercao of batch) {
-                try {
-                    // ⭐ DEDUPLICAÇÃO: Verificar se já existe pinga azul para esta cidade
-                    const chaveCity = `${insercao.city}/${insercao.uf}`;
-                    
-                    if (pingAzulPorCidade.has(chaveCity)) {
-                        console.log(`↩️ Pulando - já existe pinga azul para ${chaveCity}`);
-                        continue; // Pular para próxima inserção
-                    }
-                    
-                    const animacao = {
-                        lat: 0,
-                        lng: 0,
-                        id: `pinga-azul-${processadas}`,
-                        tipo: 'azul',
-                        origem: 'pinga-azul-permanente',
-                        cidade: insercao.city,
-                        uf: insercao.uf,
-                        dados: {
-                            emissora: insercao.stationName || 'N/A',
-                            cidade: insercao.city || 'N/A',
-                            uf: insercao.uf || 'N/A',
-                            horario: insercao.hour || 'N/A',
-                            cliente: insercao.client || 'N/A',
-                            campanha: insercao.campaign || 'N/A'
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+
+            console.log(`🔵 Response status: ${response.status}`);
+
+            if (!response.ok) {
+                console.error(`🔵 HTTP Error: ${response.status} ${response.statusText}`);
+                return;
+            }
+
+            const data = await response.json();
+            console.log(`🔵 Data received:`, data);
+
+            if (!data.success) {
+                console.error(`🔵 API returned success: false`);
+                return;
+            }
+
+            if (!data.todasInsercoes || !Array.isArray(data.todasInsercoes)) {
+                console.error(`🔵 data.todasInsercoes is not an array`, data.todasInsercoes);
+                return;
+            }
+
+            console.log(`✅ ${data.todasInsercoes.length} inserções do dia recebidas`);
+
+            const insercoesCidade = data.todasInsercoes.filter(ins => ins.city && ins.city.trim() !== '');
+            console.log(`🔵 ${insercoesCidade.length} inserções com cidade`);
+
+            if (insercoesCidade.length === 0) {
+                console.warn('⚠️ Nenhuma inserção com cidade para criar pings');
+                return;
+            }
+
+            const batchSize = 5;
+            let processadas = 0;
+
+            for (let i = 0; i < insercoesCidade.length; i += batchSize) {
+                const batch = insercoesCidade.slice(i, i + batchSize);
+                console.log(`🔵 Processando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(insercoesCidade.length / batchSize)}`);
+
+                for (const insercao of batch) {
+                    try {
+                        const chaveCity = `${insercao.city}/${insercao.uf}`;
+                        if (pingAzulPorCidade.has(chaveCity)) {
+                            console.log(`↩️ Pulando - já existe pinga azul para ${chaveCity}`);
+                            continue;
                         }
-                    };
-                    
-                    await buscarCoordenadaECriarPingaAzul(animacao);
-                    
-                    // ⭐ REGISTRAR: Marcar que esta cidade já tem pinga azul
-                    pingAzulPorCidade.set(chaveCity, animacao.id);
-                    
-                    processadas++;
-                } catch (err) {
-                    console.error(`🔵 Erro ao processar inserção: ${err.message}`);
+                        const animacao = {
+                            lat: 0,
+                            lng: 0,
+                            id: `pinga-azul-${processadas}`,
+                            tipo: 'azul',
+                            origem: 'pinga-azul-permanente',
+                            cidade: insercao.city,
+                            uf: insercao.uf,
+                            dados: {
+                                emissora: insercao.stationName || 'N/A',
+                                cidade: insercao.city || 'N/A',
+                                uf: insercao.uf || 'N/A',
+                                horario: insercao.hour || 'N/A',
+                                cliente: insercao.client || 'N/A',
+                                campanha: insercao.campaign || 'N/A'
+                            }
+                        };
+                        await buscarCoordenadaECriarPingaAzul(animacao);
+                        pingAzulPorCidade.set(chaveCity, animacao.id);
+                        processadas++;
+                    } catch (err) {
+                        console.error(`🔵 Erro ao processar inserção: ${err.message}`);
+                    }
+                }
+                console.log(`⏳ ${processadas}/${insercoesCidade.length} pings azuis processados...`);
+                if (i + batchSize < insercoesCidade.length) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
-            
-            console.log(`⏳ ${processadas}/${insercoesCidade.length} pings azuis processados...`);
-            
-            // Delay entre lotes
-            if (i + batchSize < insercoesCidade.length) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+
+            console.log(`✨ Total de ${processadas} pings azuis criados!`);
+            return;
+        } catch (error) {
+            const isRede = error.name === 'TypeError' && (error.message === 'Failed to fetch' || error.message.includes('fetch'));
+            const isAborto = error.name === 'AbortError';
+            if (isRede || isAborto) {
+                console.warn(`⚠️ Pings azuis tentativa ${tentativa}/${PINGS_AZUIS_MAX_TENTATIVAS} falhou:`, isAborto ? 'Timeout.' : error.message);
+                if (tentativa < PINGS_AZUIS_MAX_TENTATIVAS) {
+                    console.log(`🔵 Nova tentativa em 3s...`);
+                    await aguardar(3000);
+                } else {
+                    if (CONFIG.VERBOSE_LOGS) {
+                        console.warn('⚠️ Pings azuis: conexão indisponível após todas as tentativas.');
+                    }
+                    return;
+                }
+            } else {
+                console.error('❌ Erro em carregarPingsAzuis():', error.message);
+                return;
             }
         }
-        
-        console.log(`✨ Total de ${processadas} pings azuis criados!`);
-    } catch (error) {
-        const isRede = error.name === 'TypeError' && (error.message === 'Failed to fetch' || error.message.includes('fetch'));
-        const isAborto = error.name === 'AbortError';
-        if (isRede || isAborto) {
-            console.warn('⚠️ Pings azuis: conexão indisponível (será ignorado).', isAborto ? 'Timeout.' : error.message);
-            return;
-        }
-        console.error('❌ Erro em carregarPingsAzuis():', error.message);
     }
 }
 
