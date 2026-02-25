@@ -217,10 +217,16 @@ async function carregarPingsAzuis() {
         const apiUrl = `${CONFIG.API_BASE}/api/insercoes/todas`;
         console.log(`🔵 Fetching: ${apiUrl}`);
         
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
         const response = await fetch(apiUrl, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         console.log(`🔵 Response status: ${response.status}`);
         
@@ -312,8 +318,13 @@ async function carregarPingsAzuis() {
         
         console.log(`✨ Total de ${processadas} pings azuis criados!`);
     } catch (error) {
-        console.error('❌ ERRO CRÍTICO em carregarPingsAzuis():', error);
-        console.error('Stack:', error.stack);
+        const isRede = error.name === 'TypeError' && (error.message === 'Failed to fetch' || error.message.includes('fetch'));
+        const isAborto = error.name === 'AbortError';
+        if (isRede || isAborto) {
+            console.warn('⚠️ Pings azuis: conexão indisponível (será ignorado).', isAborto ? 'Timeout.' : error.message);
+            return;
+        }
+        console.error('❌ Erro em carregarPingsAzuis():', error.message);
     }
 }
 
@@ -595,6 +606,7 @@ function criarPingTesteBasilia() {
 // ⭐ NOVO: Cache local para dados do dashboard
 let dashboardCache = null;
 let dashboardCacheTimestamp = null;
+let intervaloReconexao = null;
 
 async function buscarDashboardCompleto() {
     const MAX_TENTATIVAS = 3;
@@ -663,6 +675,7 @@ async function buscarDashboardCompleto() {
                 } else {
                     console.error('❌ Erro ao buscar dashboard e sem cache disponível');
                     mostrarErro('Erro de conexão - tentando reconectar...');
+                    iniciarReconexaoEmBackground();
                     return false;
                 }
             }
@@ -673,6 +686,19 @@ async function buscarDashboardCompleto() {
     }
     
     return false;
+}
+
+/** Tenta reconectar a cada 15s; quando conseguir, atualiza a tela e para o intervalo. */
+function iniciarReconexaoEmBackground() {
+    if (intervaloReconexao) return;
+    intervaloReconexao = setInterval(async () => {
+        const ok = await buscarDashboardCompleto();
+        if (ok) {
+            clearInterval(intervaloReconexao);
+            intervaloReconexao = null;
+            console.log('✅ Reconexão feita com sucesso.');
+        }
+    }, 15000);
 }
 
 // ⭐ NOVO: Limpeza Periódica de Memória
